@@ -1,7 +1,5 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { RootStackParamList } from './types';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, BackHandler, Animated } from 'react-native';
 
 import { SplashScreen } from '../screens/SplashScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
@@ -20,44 +18,101 @@ import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { AppSettingsScreen } from '../screens/AppSettingsScreen';
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+interface ScreenEntry {
+  name: string;
+  params?: any;
+}
 
-export const RootNavigator = () => {
+const SCREENS: Record<string, React.ComponentType<any>> = {
+  Splash: SplashScreen,
+  Onboarding: OnboardingScreen,
+  PermissionSetup: PermissionSetupScreen,
+  Dashboard: DashboardScreen,
+  VoicemailInbox: VoicemailInboxScreen,
+  LiveVoicemail: LiveVoicemailScreen,
+  VoicemailDetail: VoicemailDetailScreen,
+  AudioPlayer: AudioPlayerScreen,
+  AISummary: AISummaryScreen,
+  GreetingManagement: GreetingManagementScreen,
+  CallSettings: CallSettingsScreen,
+  ForwardingConfig: ForwardingConfigScreen,
+  Contacts: ContactsScreen,
+  Notifications: NotificationsScreen,
+  Profile: ProfileScreen,
+  AppSettings: AppSettingsScreen,
+};
+
+export const RootNavigator: React.FC = () => {
+  const [history, setHistory] = useState<ScreenEntry[]>([{ name: 'Splash', params: {} }]);
+  const fadeAnim = useRef(new Animated.Value(1)).current;
+
+  const currentEntry = history[history.length - 1] || { name: 'Dashboard', params: {} };
+
+  // Android Hardware Back button handling
+  useEffect(() => {
+    const onBackPress = () => {
+      if (history.length > 1) {
+        goBack();
+        return true;
+      }
+      return false; // Exit app if at root
+    };
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => backHandler.remove();
+  }, [history]);
+
+  const animateTransition = (callback: () => void) => {
+    Animated.sequence([
+      Animated.timing(fadeAnim, { toValue: 0.85, duration: 80, useNativeDriver: true }),
+      Animated.timing(fadeAnim, { toValue: 1, duration: 120, useNativeDriver: true }),
+    ]).start();
+    callback();
+  };
+
+  const navigate = (screenName: string, params: any = {}) => {
+    animateTransition(() => {
+      setHistory((prev) => [...prev, { name: screenName, params }]);
+    });
+  };
+
+  const replace = (screenName: string, params: any = {}) => {
+    animateTransition(() => {
+      setHistory((prev) => [...prev.slice(0, prev.length - 1), { name: screenName, params }]);
+    });
+  };
+
+  const goBack = () => {
+    if (history.length > 1) {
+      animateTransition(() => {
+        setHistory((prev) => prev.slice(0, prev.length - 1));
+      });
+    }
+  };
+
+  const navigation = {
+    navigate,
+    replace,
+    goBack,
+  };
+
+  const route = {
+    name: currentEntry.name,
+    params: currentEntry.params || {},
+  };
+
+  const ScreenComponent = SCREENS[currentEntry.name] || DashboardScreen;
+
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        initialRouteName="Splash"
-        screenOptions={{
-          headerShown: false,
-          animation: 'fade_from_bottom',
-          contentStyle: { backgroundColor: '#0B0D12' },
-        }}
-      >
-        <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-        <Stack.Screen name="PermissionSetup" component={PermissionSetupScreen} />
-        <Stack.Screen name="Dashboard" component={DashboardScreen} />
-        <Stack.Screen name="VoicemailInbox" component={VoicemailInboxScreen} />
-        <Stack.Screen
-          name="LiveVoicemail"
-          component={LiveVoicemailScreen}
-          options={{ animation: 'slide_from_bottom' }}
-        />
-        <Stack.Screen name="VoicemailDetail" component={VoicemailDetailScreen} />
-        <Stack.Screen
-          name="AudioPlayer"
-          component={AudioPlayerScreen}
-          options={{ presentation: 'modal' }}
-        />
-        <Stack.Screen name="AISummary" component={AISummaryScreen} />
-        <Stack.Screen name="GreetingManagement" component={GreetingManagementScreen} />
-        <Stack.Screen name="CallSettings" component={CallSettingsScreen} />
-        <Stack.Screen name="ForwardingConfig" component={ForwardingConfigScreen} />
-        <Stack.Screen name="Contacts" component={ContactsScreen} />
-        <Stack.Screen name="Notifications" component={NotificationsScreen} />
-        <Stack.Screen name="Profile" component={ProfileScreen} />
-        <Stack.Screen name="AppSettings" component={AppSettingsScreen} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
+      <ScreenComponent navigation={navigation} route={route} />
+    </Animated.View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0B0D12',
+  },
+});

@@ -152,6 +152,16 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
         CallStateTracker.setSilenceUnknown(silence)
     }
 
+    @ReactMethod
+    fun addListener(eventName: String) {
+        // Keep for NativeEventEmitter compatibility
+    }
+
+    @ReactMethod
+    fun removeListeners(count: Int) {
+        // Keep for NativeEventEmitter compatibility
+    }
+
     override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == REQUEST_CALL_SCREENING_ROLE || requestCode == REQUEST_DEFAULT_DIALER_ROLE) {
             val isSuccess = resultCode == Activity.RESULT_OK

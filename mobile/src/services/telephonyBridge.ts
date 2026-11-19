@@ -5,7 +5,14 @@ const { NovaTelephonyModule } = NativeModules;
 const isAndroid = Platform.OS === 'android';
 const hasNativeModule = isAndroid && !!NovaTelephonyModule;
 
-const eventEmitter = hasNativeModule ? new NativeEventEmitter(NovaTelephonyModule) : null;
+let eventEmitter: NativeEventEmitter | null = null;
+try {
+  if (hasNativeModule) {
+    eventEmitter = new NativeEventEmitter(NovaTelephonyModule);
+  }
+} catch (e) {
+  eventEmitter = null;
+}
 
 export interface IncomingCallEvent {
   phoneNumber: string;
