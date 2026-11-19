@@ -1,24 +1,14 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
-apply plugin: "com.facebook.react"
-
-react {
-    autolinkLibrariesWithApp()
-}
-
-def enableProguardInReleaseBuilds = false
-def jscFlavor = 'io.github.react-native-community:jsc-android:+'
 
 android {
-    ndkVersion rootProject.ext.ndkVersion
-    buildToolsVersion rootProject.ext.buildToolsVersion
-    compileSdk rootProject.ext.compileSdkVersion
-
     namespace "com.novalive.voicemail"
+    compileSdk 34
+
     defaultConfig {
         applicationId "com.novalive.voicemail"
-        minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
+        minSdk 26
+        targetSdk 34
         versionCode 1
         versionName "1.0.0"
     }
@@ -30,14 +20,6 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        release {
-            if (project.hasProperty('NOVA_RELEASE_STORE_FILE')) {
-                storeFile file(NOVA_RELEASE_STORE_FILE)
-                storePassword NOVA_RELEASE_STORE_PASSWORD
-                keyAlias NOVA_RELEASE_KEY_ALIAS
-                keyPassword NOVA_RELEASE_KEY_PASSWORD
-            }
-        }
     }
 
     buildTypes {
@@ -45,22 +27,25 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
-            minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            signingConfig signingConfigs.debug
+            minifyEnabled false
         }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
     }
 }
 
 dependencies {
-    implementation("com.facebook.react:react-android")
+    implementation("com.facebook.react:react-android:0.74.1")
+    implementation("com.facebook.react:hermes-android:0.74.1")
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.6.1")
     implementation("com.google.android.material:material:1.12.0")
-
-    if (hermesEnabled.toBoolean()) {
-        implementation("com.facebook.react:hermes-android")
-    } else {
-        implementation jscFlavor
-    }
 }

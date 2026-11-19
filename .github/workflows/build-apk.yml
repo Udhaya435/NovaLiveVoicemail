@@ -26,12 +26,6 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
-
-      - name: Setup Android SDK Environment
-        run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -43,13 +37,13 @@ jobs:
           cd mobile
           npm install --legacy-peer-deps
 
-      - name: Bundle React Native JavaScript Code
+      - name: Bundle React Native JavaScript Assets
         run: |
           cd mobile
           mkdir -p android/app/src/main/assets
           npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res || true
 
-      - name: Build Android APK with Gradle
+      - name: Build Android APK
         run: |
           cd mobile/android
           gradle assembleDebug --no-daemon --stacktrace
