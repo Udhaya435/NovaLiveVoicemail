@@ -10,6 +10,7 @@ import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.novalive.voicemail.telecom.CallStateTracker
 import com.novalive.voicemail.telecom.CarrierForwardingHelper
+import com.novalive.voicemail.telecom.NovaSpeechRecognitionHelper
 
 class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext), ActivityEventListener {
@@ -21,6 +22,7 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
     }
 
     private var pendingPromise: Promise? = null
+    private var speechHelper: NovaSpeechRecognitionHelper? = null
 
     init {
         reactContext.addActivityEventListener(this)
@@ -34,6 +36,35 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
             }
             sendEvent("onIncomingCall", params)
         }
+
+        // Initialize Native Speech Recognition Helper for on-device live speech-to-text
+        speechHelper = NovaSpeechRecognitionHelper(
+            context = reactContext,
+            onPartialResult = { text ->
+                val params = Arguments.createMap().apply {
+                    putString("text", text)
+                }
+                sendEvent("onSpeechPartialResult", params)
+            },
+            onFinalResult = { text ->
+                val params = Arguments.createMap().apply {
+                    putString("text", text)
+                }
+                sendEvent("onSpeechFinalResult", params)
+            },
+            onRmsChanged = { rmsdB ->
+                val params = Arguments.createMap().apply {
+                    putDouble("rmsdB", rmsdB.toDouble())
+                }
+                sendEvent("onSpeechVolume", params)
+            },
+            onErrorOccurred = { errorMsg ->
+                val params = Arguments.createMap().apply {
+                    putString("error", errorMsg)
+                }
+                sendEvent("onSpeechError", params)
+            }
+        )
     }
 
     override fun getName(): String = NAME
@@ -43,6 +74,26 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
             reactContext
                 .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                 .emit(eventName, params)
+        }
+    }
+
+    @ReactMethod
+    fun startLiveSpeechRecognition(language: String, promise: Promise) {
+        try {
+            speechHelper?.startListening(if (language.isEmpty()) "en-US" else language)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SPEECH_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun stopLiveSpeechRecognition(promise: Promise) {
+        try {
+            speechHelper?.stopListening()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SPEECH_ERROR", e.message)
         }
     }
 
@@ -153,13 +204,29 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun getInitialCallDetails(promise: Promise) {
+        val activity = currentActivity
+        val intent = activity?.intent
+        val screen = intent?.getStringExtra("screen") ?: ""
+        val callerNumber = intent?.getStringExtra("callerNumber") ?: ""
+        val callerName = intent?.getStringExtra("callerName") ?: ""
+
+        val map = Arguments.createMap().apply {
+            putString("screen", screen)
+            putString("callerNumber", callerNumber)
+            putString("callerName", callerName)
+        }
+        promise.resolve(map)
+    }
+
+    @ReactMethod
     fun addListener(eventName: String) {
-        // Keep for NativeEventEmitter compatibility
+        // Required for React Native NativeEventEmitter
     }
 
     @ReactMethod
     fun removeListeners(count: Int) {
-        // Keep for NativeEventEmitter compatibility
+        // Required for React Native NativeEventEmitter
     }
 
     override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {

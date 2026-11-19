@@ -22,13 +22,58 @@ export interface IncomingCallEvent {
 
 export const TelephonyBridge = {
   /**
+   * Start native on-device live speech recognition
+   */
+  startLiveSpeechRecognition: async (language = 'en-US'): Promise<boolean> => {
+    if (!hasNativeModule || !NovaTelephonyModule.startLiveSpeechRecognition) {
+      console.log('[TelephonyBridge] Speech recognizer simulated in dev mode');
+      return true;
+    }
+    return NovaTelephonyModule.startLiveSpeechRecognition(language);
+  },
+
+  /**
+   * Stop native on-device live speech recognition
+   */
+  stopLiveSpeechRecognition: async (): Promise<boolean> => {
+    if (!hasNativeModule || !NovaTelephonyModule.stopLiveSpeechRecognition) {
+      return true;
+    }
+    return NovaTelephonyModule.stopLiveSpeechRecognition();
+  },
+
+  /**
+   * Listen to partial speech recognition results (progressive live text)
+   */
+  onSpeechPartialResult: (callback: (data: { text: string }) => void) => {
+    if (!eventEmitter) return () => {};
+    const sub = eventEmitter.addListener('onSpeechPartialResult', callback);
+    return () => sub.remove();
+  },
+
+  /**
+   * Listen to final speech recognition results
+   */
+  onSpeechFinalResult: (callback: (data: { text: string }) => void) => {
+    if (!eventEmitter) return () => {};
+    const sub = eventEmitter.addListener('onSpeechFinalResult', callback);
+    return () => sub.remove();
+  },
+
+  /**
+   * Listen to real microphone volume level to drive audio waveforms
+   */
+  onSpeechVolume: (callback: (data: { rmsdB: number }) => void) => {
+    if (!eventEmitter) return () => {};
+    const sub = eventEmitter.addListener('onSpeechVolume', callback);
+    return () => sub.remove();
+  },
+
+  /**
    * Request Android Call Screening Role (RoleManager.ROLE_CALL_SCREENING)
    */
   requestCallScreeningRole: async (): Promise<boolean> => {
-    if (!hasNativeModule) {
-      console.warn('[TelephonyBridge] Native module unavailable on this platform/mode');
-      return true;
-    }
+    if (!hasNativeModule) return true;
     return NovaTelephonyModule.requestCallScreeningRole();
   },
 
@@ -36,9 +81,7 @@ export const TelephonyBridge = {
    * Request Default Dialer Role (RoleManager.ROLE_DIALER)
    */
   requestDefaultDialerRole: async (): Promise<boolean> => {
-    if (!hasNativeModule) {
-      return true;
-    }
+    if (!hasNativeModule) return true;
     return NovaTelephonyModule.requestDefaultDialerRole();
   },
 
@@ -60,7 +103,6 @@ export const TelephonyBridge = {
 
   /**
    * Activate carrier conditional call forwarding using standard MMI code
-   * Types: "no_answer", "busy", "unreachable", "all_conditional"
    */
   activateCarrierForwarding: async (type: string, targetNumber: string, ringSeconds = 20): Promise<{ success: boolean; mmiCode: string }> => {
     if (!hasNativeModule) {
@@ -86,6 +128,16 @@ export const TelephonyBridge = {
     if (hasNativeModule) {
       NovaTelephonyModule.setSilenceUnknownCallers(silence);
     }
+  },
+
+  /**
+   * Get initial call details if the app was opened via incoming call notification
+   */
+  getInitialCallDetails: async (): Promise<{ screen: string; callerNumber: string; callerName: string }> => {
+    if (!hasNativeModule || !NovaTelephonyModule.getInitialCallDetails) {
+      return { screen: '', callerNumber: '', callerName: '' };
+    }
+    return NovaTelephonyModule.getInitialCallDetails();
   },
 
   /**

@@ -23,6 +23,14 @@ interface ScreenEntry {
   params?: any;
 }
 
+let globalNavRef: { navigate: (screen: string, params?: any) => void } | null = null;
+
+export const navigateGlobal = (screenName: string, params: any = {}) => {
+  if (globalNavRef) {
+    globalNavRef.navigate(screenName, params);
+  }
+};
+
 const SCREENS: Record<string, React.ComponentType<any>> = {
   Splash: SplashScreen,
   Onboarding: OnboardingScreen,
@@ -75,6 +83,13 @@ export const RootNavigator: React.FC = () => {
       setHistory((prev) => [...prev, { name: screenName, params }]);
     });
   };
+
+  useEffect(() => {
+    globalNavRef = { navigate };
+    return () => {
+      globalNavRef = null;
+    };
+  }, []);
 
   const replace = (screenName: string, params: any = {}) => {
     animateTransition(() => {

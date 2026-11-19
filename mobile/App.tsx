@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { View, StatusBar, StyleSheet } from 'react-native';
-import { RootNavigator } from './src/navigation/RootNavigator';
+import { RootNavigator, navigateGlobal } from './src/navigation/RootNavigator';
 import { TelephonyBridge } from './src/services/telephonyBridge';
 import { socketService } from './src/services/socket';
 
@@ -13,14 +13,32 @@ export default function App() {
       console.log('[App] Socket connect optional in demo');
     }
 
-    // 2. Listen to native Android CallScreening / InCallService incoming events
+    // 2. Check if opened via incoming call intent/notification
+    try {
+      TelephonyBridge.getInitialCallDetails().then((details) => {
+        if (details.screen === 'LiveVoicemail' && details.callerNumber) {
+          navigateGlobal('LiveVoicemail', {
+            callerNumber: details.callerNumber,
+            callerName: details.callerName || 'Incoming Caller',
+          });
+        }
+      });
+    } catch (e) {
+      console.log('[App] getInitialCallDetails error:', e);
+    }
+
+    // 3. Listen to native Android CallScreening / InCallService incoming events
     let unsubscribe: () => void = () => {};
     try {
       unsubscribe = TelephonyBridge.onIncomingCall((event) => {
         console.log('[App] Incoming call event from Android Telecom:', event);
+        navigateGlobal('LiveVoicemail', {
+          callerNumber: event.phoneNumber,
+          callerName: event.displayName || 'Incoming Caller',
+        });
       });
     } catch (e) {
-      console.log('[App] Telecom bridge listener initialized');
+      console.log('[App] Telecom bridge listener error:', e);
     }
 
     return () => {
