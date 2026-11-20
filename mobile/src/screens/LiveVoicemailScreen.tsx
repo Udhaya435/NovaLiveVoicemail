@@ -8,7 +8,7 @@ import { ApiService } from '../services/api';
 
 export const LiveVoicemailScreen = ({ route, navigation }: any) => {
   const callerName = route.params?.callerName || 'Dr. Michael Chen';
-  const callerNumber = route.params?.callerNumber || '+1 (650) 892-4410';
+  const callerNumber = route.params?.callerNumber || '+91 98401 23456';
 
   const [callDuration, setCallDuration] = useState(0);
   const [liveTranscript, setLiveTranscript] = useState('');
@@ -18,38 +18,39 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
   const [audioVolume, setAudioVolume] = useState<number>(0);
   const [aiSummary, setAiSummary] = useState<any>(null);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Listening for voice...');
+  const [statusMessage, setStatusMessage] = useState('Initializing microphone...');
+  const simulationIntervalRef = useRef<any>(null);
 
   useEffect(() => {
-    // Duration counter
+    // 1. Duration counter
     const timer = setInterval(() => {
       setCallDuration((prev) => prev + 1);
     }, 1000);
 
-    // Request Audio Permission & Start Live On-Device Speech Recognition
+    // 2. Start speech session
     startLiveSpeechSession(selectedLanguage);
 
-    // Listen to native on-device speech recognizer events
+    // 3. Listen to native speech recognizer events
     const unsubPartial = TelephonyBridge.onSpeechPartialResult((data) => {
-      if (data.text) {
+      if (data && data.text) {
         setLiveTranscript(data.text);
-        setStatusMessage('Voice detected');
+        setStatusMessage('Voice detected - transcribing live...');
       }
     });
 
     const unsubFinal = TelephonyBridge.onSpeechFinalResult((data) => {
-      if (data.text) {
+      if (data && data.text) {
         setLiveTranscript(data.text);
       }
     });
 
     const unsubVolume = TelephonyBridge.onSpeechVolume((data) => {
-      if (data.rmsdB) {
+      if (data && data.rmsdB) {
         setAudioVolume(data.rmsdB);
       }
     });
 
-    // Listen to real cloud WebSocket live events if connected
+    // 4. WebSocket live stream listener
     const unsubWs = socketService.on('LIVE_TRANSCRIPT_UPDATE', (data: any) => {
       if (data.partialText) {
         setLiveTranscript(data.partialText);
@@ -61,6 +62,9 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
 
     return () => {
       clearInterval(timer);
+      if (simulationIntervalRef.current) {
+        clearInterval(simulationIntervalRef.current);
+      }
       unsubPartial();
       unsubFinal();
       unsubVolume();
@@ -83,17 +87,29 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
 
         if (granted === PermissionsAndroid.RESULTS.GRANTED) {
           setIsMicLive(true);
-          setStatusMessage('Microphone active - speak now');
+          setStatusMessage('Microphone active - speak now in ' + (lang === 'ta-IN' ? 'தமிழ்' : 'English'));
           await TelephonyBridge.startLiveSpeechRecognition(lang);
         } else {
-          setStatusMessage('Microphone access denied. Using demo mode.');
-          fallbackSimulation();
+          setIsMicLive(false);
+          setStatusMessage('Microphone access denied. You can use Sample Voice below.');
         }
       } else {
-        fallbackSimulation();
+        setIsMicLive(false);
+        setStatusMessage('Dev simulation mode ready.');
       }
-    } catch (e) {
-      fallbackSimulation();
+    } catch (e: any) {
+      setIsMicLive(false);
+      setStatusMessage('Microphone check: ' + (e.message || 'Ready'));
+    }
+  };
+
+  const toggleMicrophone = async () => {
+    if (isMicLive) {
+      await TelephonyBridge.stopLiveSpeechRecognition();
+      setIsMicLive(false);
+      setStatusMessage('Microphone paused');
+    } else {
+      await startLiveSpeechSession(selectedLanguage);
     }
   };
 
@@ -101,79 +117,107 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
     setSelectedLanguage(newLang);
     setStatusMessage(`Language set to ${newLang === 'ta-IN' ? 'தமிழ்' : 'English'}`);
     await TelephonyBridge.stopLiveSpeechRecognition();
-    await TelephonyBridge.startLiveSpeechRecognition(newLang);
+    if (isMicLive) {
+      await TelephonyBridge.startLiveSpeechRecognition(newLang);
+    }
   };
 
-  const fallbackSimulation = () => {
-    const progressiveTextChunks = [
-      "Hi, I'm calling regarding your appointment tomorrow at 11 AM.",
-      " Please make sure to bring your medical records and insurance card.",
-      " If you need to reschedule, please call my office before 5 PM today.",
-      " Thank you!"
+  const runSampleVoiceSimulation = (lang: 'en' | 'ta' = 'en') => {
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+    }
+
+    setLiveTranscript('');
+    setStatusMessage(`Streaming ${lang === 'ta' ? 'தமிழ்' : 'English'} voice simulation...`);
+
+    const enWords = [
+      "Hi,", "this", "is", "Dr.", "Michael", "Chen", "calling", "regarding", "your",
+      "appointment", "scheduled", "for", "tomorrow", "at", "11:00", "AM.",
+      "Please", "confirm", "if", "you", "can", "attend,", "or", "call", "me", "back", "before", "5", "PM.",
+      "Thank", "you!"
     ];
 
-    let chunkIndex = 0;
-    const interval = setInterval(() => {
-      if (chunkIndex < progressiveTextChunks.length) {
-        setLiveTranscript((prev) => prev + (chunkIndex === 0 ? '' : ' ') + progressiveTextChunks[chunkIndex]);
-        chunkIndex++;
+    const taWords = [
+      "வணக்கம்,", "டாக்டர்", "மைக்கேல்", "சென்", "பேசுகிறேன்.",
+      "நாளை", "காலை", "11", "மணிக்கு", "உங்களுடைய", "மருத்துவ", "சந்திப்பு", "உள்ளது.",
+      "தயவுசெய்து", "உறுதிப்படுத்தவும்,", "இல்லை", "எனில்", "மாலை", "5", "மணிக்குள்", "அழைக்கவும்.",
+      "நன்றி!"
+    ];
+
+    const words = lang === 'ta' ? taWords : enWords;
+    let index = 0;
+    let currentText = '';
+
+    simulationIntervalRef.current = setInterval(() => {
+      if (index < words.length) {
+        currentText = currentText ? `${currentText} ${words[index]}` : words[index];
+        setLiveTranscript(currentText);
+        setAudioVolume(Math.random() * 8 + 4); // Simulate dynamic RMS waveform
+        index++;
       } else {
-        clearInterval(interval);
+        clearInterval(simulationIntervalRef.current);
+        setStatusMessage('Voice message finished. Tap "Finish & Summarize".');
       }
-    }, 2400);
+    }, 280);
   };
 
   const finishVoicemail = async (spokenText?: string) => {
-    const textToSummarize = spokenText || liveTranscript || "Caller left a voicemail message.";
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+    }
+
+    const textToSummarize = spokenText || liveTranscript || "Caller left a voicemail message regarding tomorrow's schedule.";
     setCallStatus('ENDED');
     setIsProcessingAI(true);
-    setStatusMessage('Analyzing voicemail with Nova AI...');
+    setStatusMessage('Nova AI is analyzing transcript...');
     await TelephonyBridge.stopLiveSpeechRecognition();
+    setIsMicLive(false);
 
     try {
       // Analyze with intelligent heuristic & AI analyzer
       const lower = textToSummarize.toLowerCase();
       const hasTomorrow = lower.includes('tomorrow') || lower.includes('nalaikku') || lower.includes('நாளை');
       const isUrgent = lower.includes('urgent') || lower.includes('mukkiyam') || lower.includes('emergency') || lower.includes('முக்கியம்');
-      const hasCallback = lower.includes('call') || lower.includes('reach') || lower.includes('thodarbu') || lower.includes('pesanum') || lower.includes('தொடர்பு');
+      const hasCallback = lower.includes('call') || lower.includes('reach') || lower.includes('thodarbu') || lower.includes('pesanum') || lower.includes('தொடர்பு') || lower.includes('அழைக்கவும்');
       const isAppointment = lower.includes('appointment') || lower.includes('doctor') || lower.includes('clinic') || lower.includes('meet') || lower.includes('சந்திப்பு');
 
-      let callerPurpose = 'General Inquiry';
+      let callerPurpose = 'General Message';
       if (isUrgent) callerPurpose = 'Urgent Action Required';
       else if (isAppointment) callerPurpose = 'Appointment / Meeting Sync';
       else if (hasCallback) callerPurpose = 'Callback Requested';
 
       const dates: string[] = [];
       if (hasTomorrow) dates.push('Tomorrow at 11:00 AM');
-      if (lower.includes('today') || lower.includes('inraikku')) dates.push('Today before 5:00 PM');
+      if (lower.includes('today') || lower.includes('inraikku') || lower.includes('மாலை')) dates.push('Today before 5:00 PM');
 
       const summaryData = {
-        summaryText: `Caller left a message regarding ${callerPurpose.toLowerCase()}: "${textToSummarize.slice(0, 120)}${textToSummarize.length > 120 ? '...' : ''}"`,
+        summaryText: `Caller left a message regarding ${callerPurpose.toLowerCase()}: "${textToSummarize.slice(0, 140)}${textToSummarize.length > 140 ? '...' : ''}"`,
         callerPurpose,
         appointmentDates: dates,
         callbackRequested: hasCallback,
         suggestedReplies: [
           {
             en: 'Got your message! I will call you back shortly.',
-            ta: 'Unga voicemail vandhuchu, naan konjam nerathula thodarbu kolgiren.'
+            ta: 'Unga voicemail vandhuchu, naan konjam nerathula thodarbu kolgiren.',
           },
           {
-            en: isAppointment ? 'Confirming the time, see you then.' : 'Thank you for calling. Acknowledged.',
-            ta: isAppointment ? 'Neram sariya irukku, appo paakkalam.' : 'Ungal azhaippukku nandri, kavanithukondein.'
-          }
-        ]
+            en: isAppointment ? 'Confirming the appointment for tomorrow 11 AM.' : 'Thank you for calling. Acknowledged.',
+            ta: isAppointment ? 'Nalaikku 11 manikku appointment confirm panren.' : 'Ungal azhaippukku nandri, kavanithukondein.',
+          },
+        ],
       };
 
       setAiSummary(summaryData);
-      setStatusMessage('Summary ready');
+      setStatusMessage('Voicemail saved to Inbox & AI Summary ready!');
 
-      // Save to inbox
-      ApiService.createTestVoicemail({
+      // Save to in-app repository & cloud
+      await ApiService.createTestVoicemail({
         callerName,
         callerNumber,
         transcriptText: textToSummarize,
-        durationSeconds: Math.max(callDuration, 12),
-      }).catch(() => {});
+        durationSeconds: Math.max(callDuration, 18),
+        summary: summaryData,
+      });
     } finally {
       setIsProcessingAI(false);
     }
@@ -192,7 +236,7 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
         <View style={styles.liveBadge}>
           <View style={[styles.liveDot, callStatus === 'ENDED' && styles.endedDot]} />
           <Text style={[styles.liveBadgeText, callStatus === 'ENDED' && styles.endedText]}>
-            {callStatus === 'RECORDING' ? (isMicLive ? 'LIVE SPEECH' : 'LIVE VOICEMAIL') : 'MESSAGE SAVED'}
+            {callStatus === 'RECORDING' ? (isMicLive ? 'LIVE SPEECH ON' : 'RECORDING') : 'SAVED TO INBOX'}
           </Text>
         </View>
         <Text style={styles.durationCounter}>{formatDuration(callDuration)}</Text>
@@ -209,45 +253,74 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
           <Text style={styles.statusSubtext}>{statusMessage}</Text>
         </View>
 
-        {/* Language Selector Bar */}
+        {/* Language & Input Selector */}
         {callStatus === 'RECORDING' && (
-          <View style={styles.languageToggleContainer}>
-            <Text style={styles.langLabel}>INPUT LANGUAGE:</Text>
-            <View style={styles.langButtonRow}>
-              <TouchableOpacity
-                style={[styles.langBtn, selectedLanguage === 'en-US' && styles.langBtnActive]}
-                onPress={() => switchLanguage('en-US')}
-              >
-                <Text style={[styles.langBtnText, selectedLanguage === 'en-US' && styles.langBtnTextActive]}>
-                  🇺🇸 English
+          <View style={styles.controlsCard}>
+            <View style={styles.controlRow}>
+              <Text style={styles.controlLabel}>VOICE LANGUAGE:</Text>
+              <View style={styles.langButtons}>
+                <TouchableOpacity
+                  style={[styles.langBtn, selectedLanguage === 'en-US' && styles.langBtnActive]}
+                  onPress={() => switchLanguage('en-US')}
+                >
+                  <Text style={[styles.langBtnText, selectedLanguage === 'en-US' && styles.langBtnTextActive]}>
+                    🇺🇸 English
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.langBtn, selectedLanguage === 'ta-IN' && styles.langBtnActive]}
+                  onPress={() => switchLanguage('ta-IN')}
+                >
+                  <Text style={[styles.langBtnText, selectedLanguage === 'ta-IN' && styles.langBtnTextActive]}>
+                    🇮🇳 தமிழ்
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Quick Test / Mic Buttons */}
+            <View style={styles.quickTestRow}>
+              <TouchableOpacity style={styles.micToggleBtn} onPress={toggleMicrophone}>
+                <Text style={styles.micToggleText}>
+                  {isMicLive ? '🎙️ Mic Active (Tap to Pause)' : '🎙️ Tap to Activate Mic'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.langBtn, selectedLanguage === 'ta-IN' && styles.langBtnActive]}
-                onPress={() => switchLanguage('ta-IN')}
-              >
-                <Text style={[styles.langBtnText, selectedLanguage === 'ta-IN' && styles.langBtnTextActive]}>
-                  🇮🇳 தமிழ்
-                </Text>
-              </TouchableOpacity>
+            </View>
+
+            <View style={styles.quickVoiceOptions}>
+              <Text style={styles.simulationLabel}>OR TEST SIMULATED CALLER:</Text>
+              <View style={styles.simButtonsRow}>
+                <TouchableOpacity
+                  style={styles.simBtn}
+                  onPress={() => runSampleVoiceSimulation('en')}
+                >
+                  <Text style={styles.simBtnText}>⚡ Test English Voice</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.simBtn}
+                  onPress={() => runSampleVoiceSimulation('ta')}
+                >
+                  <Text style={styles.simBtnText}>⚡ தமிழ் குரல் சோதனை</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         )}
 
         {/* Real-time Audio Waveform */}
         <View style={styles.waveformContainer}>
-          <WaveformVisualizer isPlaying={callStatus === 'RECORDING'} height={48} barCount={32} />
+          <WaveformVisualizer isPlaying={callStatus === 'RECORDING'} height={50} barCount={32} />
         </View>
 
         {/* Live Transcription Box */}
         <View style={styles.transcriptionCard}>
           <View style={styles.transcriptionHeader}>
             <Text style={styles.transcriptionLabel}>LIVE SPEECH TRANSCRIPTION</Text>
-            {callStatus === 'RECORDING' && <Text style={styles.streamingIndicator}>Listening •••</Text>}
+            {callStatus === 'RECORDING' && <Text style={styles.streamingIndicator}>Live •••</Text>}
           </View>
 
           <Text style={styles.transcriptionBody}>
-            {liveTranscript ? `"${liveTranscript}"` : 'Speak into your microphone now (or let caller speak)...'}
+            {liveTranscript ? `"${liveTranscript}"` : 'Waiting for voice... Speak into your mic or tap a test button above.'}
           </Text>
         </View>
 
@@ -256,7 +329,7 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
           <View style={styles.aiSummaryCard}>
             <View style={styles.aiHeader}>
               <Text style={styles.aiSparkle}>✨</Text>
-              <Text style={styles.aiTitle}>NOVA AI SUMMARY</Text>
+              <Text style={styles.aiTitle}>NOVA AI SUMMARY & PURPOSE</Text>
             </View>
             <Text style={styles.aiSummaryText}>{aiSummary.summaryText}</Text>
             <View style={styles.purposeRow}>
@@ -278,7 +351,7 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
                   key={idx}
                   style={styles.replyBubble}
                   onPress={() => {
-                    Alert.alert('Quick Reply Copied', `"${r.en}"\n\nTamil: "${r.ta}"`);
+                    Alert.alert('Quick Reply Selected', `English: "${r.en}"\n\nTamil: "${r.ta}"`);
                   }}
                 >
                   <Text style={styles.replyEn}>🇬🇧 {r.en}</Text>
@@ -325,9 +398,9 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
         ) : (
           <TouchableOpacity
             style={styles.doneButton}
-            onPress={() => navigation.navigate('Dashboard')}
+            onPress={() => navigation.navigate('VoicemailInbox')}
           >
-            <Text style={styles.doneButtonText}>Done & Return to Dashboard</Text>
+            <Text style={styles.doneButtonText}>Go to Voicemail Inbox ➔</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -388,65 +461,68 @@ const styles = StyleSheet.create({
   },
   callerCard: {
     alignItems: 'center',
-    marginVertical: 10,
+    marginVertical: 8,
   },
   avatar: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: DarkTheme.cardElevated,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
-    borderWidth: 1,
+    marginBottom: 8,
+    borderWidth: 2,
     borderColor: DarkTheme.primaryBlue,
   },
   avatarText: {
     color: DarkTheme.text,
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '700',
   },
   callerName: {
     color: DarkTheme.text,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   callerNumber: {
     color: DarkTheme.secondaryText,
-    fontSize: 14,
+    fontSize: 13,
     marginBottom: 6,
   },
   statusSubtext: {
     color: DarkTheme.secondaryBlue,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     textAlign: 'center',
   },
-  languageToggleContainer: {
+  controlsCard: {
     backgroundColor: DarkTheme.cardElevated,
-    borderRadius: 14,
-    padding: 10,
+    borderRadius: 16,
+    padding: 12,
     marginVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: DarkTheme.cardBorder,
   },
-  langLabel: {
+  controlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  controlLabel: {
     color: DarkTheme.mutedText,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-  langButtonRow: {
+  langButtons: {
     flexDirection: 'row',
     gap: 8,
   },
   langBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
     backgroundColor: DarkTheme.cardBackground,
   },
@@ -461,6 +537,53 @@ const styles = StyleSheet.create({
   langBtnTextActive: {
     color: '#FFFFFF',
   },
+  quickTestRow: {
+    marginVertical: 4,
+  },
+  micToggleBtn: {
+    backgroundColor: 'rgba(22, 139, 255, 0.15)',
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: DarkTheme.primaryBlue,
+  },
+  micToggleText: {
+    color: DarkTheme.primaryBlue,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  quickVoiceOptions: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  simulationLabel: {
+    color: DarkTheme.mutedText,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  simButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  simBtn: {
+    flex: 1,
+    backgroundColor: DarkTheme.cardBackground,
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: DarkTheme.cardBorder,
+  },
+  simBtnText: {
+    color: DarkTheme.text,
+    fontSize: 11,
+    fontWeight: '600',
+  },
   waveformContainer: {
     marginVertical: 8,
     alignItems: 'center',
@@ -468,16 +591,16 @@ const styles = StyleSheet.create({
   transcriptionCard: {
     backgroundColor: DarkTheme.cardBackground,
     borderRadius: 18,
-    padding: 18,
+    padding: 16,
     borderWidth: 1,
     borderColor: DarkTheme.cardBorder,
-    marginVertical: 8,
+    marginVertical: 6,
   },
   transcriptionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   transcriptionLabel: {
     color: DarkTheme.mutedText,
@@ -492,9 +615,9 @@ const styles = StyleSheet.create({
   },
   transcriptionBody: {
     color: DarkTheme.text,
-    fontSize: 16,
-    lineHeight: 24,
-    minHeight: 60,
+    fontSize: 15,
+    lineHeight: 23,
+    minHeight: 56,
   },
   aiSummaryCard: {
     backgroundColor: DarkTheme.cardBackground,
@@ -502,12 +625,12 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: 'rgba(22, 139, 255, 0.4)',
-    marginTop: 14,
+    marginTop: 12,
   },
   aiHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   aiSparkle: {
     fontSize: 16,
@@ -550,7 +673,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   appointmentTagText: {
     color: DarkTheme.success,
@@ -558,7 +681,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   repliesSection: {
-    marginTop: 8,
+    marginTop: 6,
   },
   repliesHeader: {
     color: DarkTheme.mutedText,
@@ -571,7 +694,7 @@ const styles = StyleSheet.create({
     backgroundColor: DarkTheme.cardElevated,
     borderRadius: 10,
     padding: 10,
-    marginBottom: 8,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: DarkTheme.cardBorder,
   },
@@ -587,15 +710,17 @@ const styles = StyleSheet.create({
   },
   inboxButton: {
     marginTop: 10,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: 'center',
-    borderRadius: 10,
-    backgroundColor: 'rgba(22, 139, 255, 0.15)',
+    borderRadius: 12,
+    backgroundColor: 'rgba(22, 139, 255, 0.18)',
+    borderWidth: 1,
+    borderColor: DarkTheme.primaryBlue,
   },
   inboxButtonText: {
     color: DarkTheme.primaryBlue,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   bottomControls: {
     paddingHorizontal: 20,

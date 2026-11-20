@@ -50,105 +50,112 @@ class NovaSpeechRecognitionHelper(
         try {
             cleanupRecognizer()
 
-            if (!SpeechRecognizer.isRecognitionAvailable(context)) {
-                onErrorOccurred("Speech recognition service not available on this device")
+            // Create SpeechRecognizer on Main Thread
+            speechRecognizer = try {
+                SpeechRecognizer.createSpeechRecognizer(context)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to create SpeechRecognizer", e)
+                onErrorOccurred("Could not initialize SpeechRecognizer: ${e.message}")
                 return
             }
 
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {
-                        Log.d(TAG, "Ready for speech in language: $currentLanguage")
+            if (speechRecognizer == null) {
+                onErrorOccurred("Speech recognition service is not available on this device")
+                return
+            }
+
+            speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) {
+                    Log.d(TAG, "Ready for speech in language: $currentLanguage")
+                }
+
+                override fun onBeginningOfSpeech() {
+                    Log.d(TAG, "Speech input started")
+                }
+
+                override fun onRmsChanged(rmsdB: Float) {
+                    if (isListening) {
+                        onRmsChanged(rmsdB)
                     }
+                }
 
-                    override fun onBeginningOfSpeech() {
-                        Log.d(TAG, "Speech input started")
-                    }
+                override fun onBufferReceived(buffer: ByteArray?) {}
 
-                    override fun onRmsChanged(rmsdB: Float) {
-                        if (isListening) {
-                            onRmsChanged(rmsdB)
-                        }
-                    }
+                override fun onEndOfSpeech() {
+                    Log.d(TAG, "Speech input ended")
+                }
 
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-
-                    override fun onEndOfSpeech() {
-                        Log.d(TAG, "Speech input ended")
-                    }
-
-                    override fun onError(error: Int) {
-                        Log.w(TAG, "Speech recognition error code: $error")
-                        
-                        // Automatically resume listening if paused, timed out, or no match while active
-                        if (isListening) {
-                            when (error) {
-                                SpeechRecognizer.ERROR_NO_MATCH,
-                                SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
-                                SpeechRecognizer.ERROR_CLIENT -> {
-                                    // Normal pause in speech, restart listening after brief interval
-                                    mainHandler.postDelayed({
-                                        if (isListening) {
-                                            initiateListeningInternal()
-                                        }
-                                    }, 250)
-                                    return
+                override fun onError(error: Int) {
+                    Log.w(TAG, "Speech recognition error code: $error")
+                    
+                    // Automatically resume listening if paused, timed out, or no match while active
+                    if (isListening) {
+                        when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH,
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+                            SpeechRecognizer.ERROR_CLIENT -> {
+                                // Normal pause in speech, restart listening after brief interval
+                                mainHandler.postDelayed({
+                                    if (isListening) {
+                                        initiateListeningInternal()
+                                    }
+                                }, 250)
+                                return
+                            }
+                            else -> {
+                                val errorMsg = when (error) {
+                                    SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
+                                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required"
+                                    SpeechRecognizer.ERROR_NETWORK -> "Network required for speech engine"
+                                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
+                                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech recognizer busy"
+                                    SpeechRecognizer.ERROR_SERVER -> "Speech server error"
+                                    else -> "Speech recognition error ($error)"
                                 }
-                                else -> {
-                                    val errorMsg = when (error) {
-                                        SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
-                                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required"
-                                        SpeechRecognizer.ERROR_NETWORK -> "Network required for speech engine"
-                                        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-                                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech recognizer busy"
-                                        SpeechRecognizer.ERROR_SERVER -> "Speech server error"
-                                        else -> "Speech recognition error ($error)"
-                                    }
-                                    onErrorOccurred(errorMsg)
-                                    
-                                    // Retry once if busy
-                                    if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
-                                        mainHandler.postDelayed({
-                                            if (isListening) initiateListeningInternal()
-                                        }, 500)
-                                    }
+                                onErrorOccurred(errorMsg)
+                                
+                                // Retry once if busy
+                                if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                                    mainHandler.postDelayed({
+                                        if (isListening) initiateListeningInternal()
+                                    }, 500)
                                 }
                             }
                         }
                     }
+                }
 
-                    override fun onResults(results: Bundle?) {
-                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        val text = matches?.firstOrNull()?.trim() ?: ""
-                        
-                        if (text.isNotEmpty()) {
-                            accumulatedText = if (accumulatedText.isEmpty()) text else "$accumulatedText $text"
-                            onFinalResult(accumulatedText)
-                        }
-
-                        // Continue listening seamlessly for multi-sentence voicemails
-                        if (isListening) {
-                            mainHandler.postDelayed({
-                                if (isListening) {
-                                    initiateListeningInternal()
-                                }
-                            }, 150)
-                        }
+                override fun onResults(results: Bundle?) {
+                    val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    val text = matches?.firstOrNull()?.trim() ?: ""
+                    
+                    if (text.isNotEmpty()) {
+                        accumulatedText = if (accumulatedText.isEmpty()) text else "$accumulatedText $text"
+                        onFinalResult(accumulatedText)
                     }
 
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        val partial = matches?.firstOrNull()?.trim() ?: ""
-                        
-                        if (partial.isNotEmpty() && isListening) {
-                            val combined = if (accumulatedText.isEmpty()) partial else "$accumulatedText $partial"
-                            onPartialResult(combined)
-                        }
+                    // Continue listening seamlessly for multi-sentence voicemails
+                    if (isListening) {
+                        mainHandler.postDelayed({
+                            if (isListening) {
+                                initiateListeningInternal()
+                            }
+                        }, 150)
                     }
+                }
 
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                })
-            }
+                override fun onPartialResults(partialResults: Bundle?) {
+                    val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    val partial = matches?.firstOrNull()?.trim() ?: ""
+                    
+                    if (partial.isNotEmpty() && isListening) {
+                        val combined = if (accumulatedText.isEmpty()) partial else "$accumulatedText $partial"
+                        onPartialResult(combined)
+                    }
+                }
+
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+            })
 
             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)

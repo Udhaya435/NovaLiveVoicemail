@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, SafeArea
 import { DarkTheme } from '../theme/colors';
 import { VoicemailCard } from '../components/VoicemailCard';
 import { ApiService } from '../services/api';
+import { VoicemailStore } from '../services/voicemailStore';
 import { Voicemail } from '../types';
 
 export const VoicemailInboxScreen = ({ navigation }: any) => {
@@ -23,7 +24,7 @@ export const VoicemailInboxScreen = ({ navigation }: any) => {
       });
       setVoicemails(res.voicemails || []);
     } catch (e) {
-      console.log('Error fetching voicemails');
+      setVoicemails(VoicemailStore.getAllVoicemails());
     } finally {
       setLoading(false);
     }
@@ -31,6 +32,11 @@ export const VoicemailInboxScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     fetchVoicemails();
+    // Subscribe to store updates (e.g. newly saved voicemails from LiveVoicemail)
+    const unsub = VoicemailStore.subscribe(() => {
+      fetchVoicemails();
+    });
+    return unsub;
   }, [filterUnread, sortOrder]);
 
   const handleSearchSubmit = () => {
@@ -48,7 +54,12 @@ export const VoicemailInboxScreen = ({ navigation }: any) => {
     <SafeAreaView style={styles.container}>
       {/* Top Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Voicemail Inbox</Text>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backButtonText}>←</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Voicemail Inbox</Text>
+        </View>
         <TouchableOpacity
           style={styles.sortButton}
           onPress={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
@@ -85,7 +96,7 @@ export const VoicemailInboxScreen = ({ navigation }: any) => {
           onPress={() => { setFilterUnread(false); setFilterCallbacks(false); }}
         >
           <Text style={[styles.chipText, !filterUnread && !filterCallbacks && styles.chipTextActive]}>
-            All
+            All ({voicemails.length})
           </Text>
         </TouchableOpacity>
 
@@ -128,6 +139,15 @@ export const VoicemailInboxScreen = ({ navigation }: any) => {
             <Text style={styles.emptyDesc}>
               {searchQuery ? 'Try adjusting your search criteria.' : 'When callers leave a message, transcripts and AI summaries appear here.'}
             </Text>
+            <TouchableOpacity
+              style={styles.emptyActionButton}
+              onPress={() => navigation.navigate('LiveVoicemail', {
+                callerName: 'Dr. Michael Chen',
+                callerNumber: '+91 98401 23456',
+              })}
+            >
+              <Text style={styles.emptyActionText}>⚡ Record New Live Voicemail</Text>
+            </TouchableOpacity>
           </View>
         }
       />
@@ -145,35 +165,50 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderColor: DarkTheme.cardBorder,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  backButton: {
+    padding: 6,
+  },
+  backButtonText: {
+    color: DarkTheme.text,
+    fontSize: 22,
+    fontWeight: '700',
   },
   title: {
     color: DarkTheme.text,
-    fontSize: 26,
-    fontWeight: '800',
+    fontSize: 22,
+    fontWeight: '700',
   },
   sortButton: {
-    backgroundColor: DarkTheme.card,
+    backgroundColor: DarkTheme.cardElevated,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: DarkTheme.cardBorder,
   },
   sortButtonText: {
-    color: DarkTheme.primaryBlue,
+    color: DarkTheme.secondaryText,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: DarkTheme.card,
-    borderRadius: 16,
+    backgroundColor: DarkTheme.cardBackground,
     marginHorizontal: 20,
-    marginBottom: 12,
+    marginTop: 12,
+    marginBottom: 8,
     paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: DarkTheme.cardBorder,
   },
@@ -183,26 +218,26 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
+    height: 42,
     color: DarkTheme.text,
-    paddingVertical: 12,
     fontSize: 14,
   },
   clearIcon: {
     color: DarkTheme.mutedText,
     fontSize: 14,
-    padding: 4,
+    padding: 6,
   },
   chipsRow: {
     flexDirection: 'row',
     paddingHorizontal: 20,
-    marginBottom: 16,
+    paddingVertical: 6,
     gap: 8,
   },
   chip: {
-    backgroundColor: DarkTheme.card,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: DarkTheme.cardElevated,
     borderWidth: 1,
     borderColor: DarkTheme.cardBorder,
   },
@@ -213,35 +248,49 @@ const styles = StyleSheet.create({
   chipText: {
     color: DarkTheme.secondaryText,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   chipTextActive: {
     color: '#FFFFFF',
+    fontWeight: '700',
   },
   list: {
     paddingHorizontal: 20,
+    paddingTop: 8,
     paddingBottom: 40,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 80,
-    paddingHorizontal: 32,
+    paddingVertical: 50,
   },
   emptyIcon: {
     fontSize: 48,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   emptyTitle: {
     color: DarkTheme.text,
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   emptyDesc: {
     color: DarkTheme.secondaryText,
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+    paddingHorizontal: 30,
+    marginBottom: 16,
+  },
+  emptyActionButton: {
+    backgroundColor: DarkTheme.primaryBlue,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  emptyActionText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Ref
 import { DarkTheme } from '../theme/colors';
 import { VoicemailCard } from '../components/VoicemailCard';
 import { ApiService } from '../services/api';
+import { VoicemailStore } from '../services/voicemailStore';
 import { Voicemail } from '../types';
 
 export const DashboardScreen = ({ navigation }: any) => {
@@ -62,6 +63,10 @@ export const DashboardScreen = ({ navigation }: any) => {
 
   useEffect(() => {
     loadData();
+    const unsub = VoicemailStore.subscribe(() => {
+      loadData();
+    });
+    return unsub;
   }, []);
 
   return (
