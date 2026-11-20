@@ -86,5 +86,14 @@
                 android:value="true" />
         </service>
 
+        <!-- Receiver for Live Phone State (Auto-Answer on Last Ring) -->
+        <receiver
+            android:name=".telecom.NovaCallReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE" />
+            </intent-filter>
+        </receiver>
+
     </application>
 </manifest>

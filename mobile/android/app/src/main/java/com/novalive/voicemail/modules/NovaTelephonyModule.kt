@@ -164,6 +164,16 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun endCall(promise: Promise) {
+        try {
+            val ended = autoAnswerHelper?.endCallNow() ?: false
+            promise.resolve(ended)
+        } catch (e: Exception) {
+            promise.reject("END_CALL_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
     fun startLiveSpeechRecognition(language: String, promise: Promise) {
         try {
             speechHelper?.startListening(if (language.isEmpty()) "en-US" else language)

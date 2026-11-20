@@ -28,15 +28,22 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
   const busyAnnouncementText = "Hello! Udhaya is busy right now. Please call back later, or leave your message after the tone.";
 
   useEffect(() => {
-    // If testing the Auto-Answer flow:
+    // If testing the Auto-Answer & Call-End flow:
     if (autoAnswerDemo) {
       const ringTimer = setTimeout(async () => {
-        setStatusMessage('📞 Auto-Answered! AI speaking busy message to caller...');
+        setStatusMessage('📞 Auto-Answered on last ring! AI speaking to caller...');
         try {
           await TelephonyBridge.speakAIAnnouncement(busyAnnouncementText);
         } catch {}
-        setStatusMessage('AI announcement finished. Caller is now leaving message:');
-        runSampleVoiceSimulation('en');
+
+        setStatusMessage('AI announcement completed. Ending call now...');
+
+        // Wait 2 seconds and automatically hang up / end call as requested
+        setTimeout(async () => {
+          await TelephonyBridge.endCall();
+          finishVoicemail('Caller heard: "Hello! Udhaya is busy right now. Please call back later, or leave your message after the tone." Call automatically ended.');
+          setStatusMessage('✅ Call Ended. AI announced Udhaya is busy.');
+        }, 2000);
       }, 3500);
 
       return () => clearTimeout(ringTimer);

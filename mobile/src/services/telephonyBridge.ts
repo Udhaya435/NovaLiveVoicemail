@@ -180,6 +180,14 @@ export const TelephonyBridge = {
   },
 
   /**
+   * End / Hang up current active call
+   */
+  endCall: async (): Promise<boolean> => {
+    if (!hasNativeModule || !NovaTelephonyModule.endCall) return true;
+    return NovaTelephonyModule.endCall();
+  },
+
+  /**
    * Listen for auto-answered call event
    */
   onCallAutoAnswered: (callback: (data: { phoneNumber: string; autoAnswered: boolean }) => void) => {
