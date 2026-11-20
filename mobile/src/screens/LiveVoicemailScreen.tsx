@@ -9,6 +9,7 @@ import { ApiService } from '../services/api';
 export const LiveVoicemailScreen = ({ route, navigation }: any) => {
   const callerName = route.params?.callerName || 'Dr. Michael Chen';
   const callerNumber = route.params?.callerNumber || '+91 98401 23456';
+  const autoAnswerDemo = route.params?.autoAnswerDemo || false;
 
   const [callDuration, setCallDuration] = useState(0);
   const [liveTranscript, setLiveTranscript] = useState('');
@@ -18,8 +19,29 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
   const [audioVolume, setAudioVolume] = useState<number>(0);
   const [aiSummary, setAiSummary] = useState<any>(null);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
-  const [statusMessage, setStatusMessage] = useState('Initializing microphone...');
+  const [statusMessage, setStatusMessage] = useState(
+    autoAnswerDemo
+      ? '📞 Phone ringing... Auto-answering on 4th ring (last ring)...'
+      : 'Initializing microphone...'
+  );
   const simulationIntervalRef = useRef<any>(null);
+  const busyAnnouncementText = "Hello! Udhaya is busy right now. Please call back later, or leave your message after the tone.";
+
+  useEffect(() => {
+    // If testing the Auto-Answer flow:
+    if (autoAnswerDemo) {
+      const ringTimer = setTimeout(async () => {
+        setStatusMessage('📞 Auto-Answered! AI speaking busy message to caller...');
+        try {
+          await TelephonyBridge.speakAIAnnouncement(busyAnnouncementText);
+        } catch {}
+        setStatusMessage('AI announcement finished. Caller is now leaving message:');
+        runSampleVoiceSimulation('en');
+      }, 3500);
+
+      return () => clearTimeout(ringTimer);
+    }
+  }, [autoAnswerDemo]);
 
   useEffect(() => {
     // 1. Duration counter
@@ -285,6 +307,19 @@ export const LiveVoicemailScreen = ({ route, navigation }: any) => {
                   {isMicLive ? '🎙️ Mic Active (Tap to Pause)' : '🎙️ Tap to Activate Mic'}
                 </Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.announcementBtn}
+                onPress={async () => {
+                  setStatusMessage('AI Speaking to Caller: "Udhaya is busy right now..."');
+                  await TelephonyBridge.speakAIAnnouncement(busyAnnouncementText);
+                  setStatusMessage('AI Announcement completed.');
+                }}
+              >
+                <Text style={styles.announcementBtnText}>
+                  📢 Play AI "Udhaya is Busy" Voice
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <View style={styles.quickVoiceOptions}>
@@ -547,11 +582,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: DarkTheme.primaryBlue,
+    marginBottom: 6,
   },
   micToggleText: {
     color: DarkTheme.primaryBlue,
     fontSize: 12,
     fontWeight: '700',
+  },
+  announcementBtn: {
+    backgroundColor: 'rgba(255, 204, 0, 0.15)',
+    paddingVertical: 9,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFCC00',
+  },
+  announcementBtnText: {
+    color: '#FFCC00',
+    fontSize: 12,
+    fontWeight: '800',
   },
   quickVoiceOptions: {
     marginTop: 8,

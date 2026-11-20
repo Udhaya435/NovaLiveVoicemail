@@ -1,15 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, RefreshControl, Alert } from 'react-native';
 import { DarkTheme } from '../theme/colors';
 import { VoicemailCard } from '../components/VoicemailCard';
 import { ApiService } from '../services/api';
 import { VoicemailStore } from '../services/voicemailStore';
+import { TelephonyBridge } from '../services/telephonyBridge';
 import { Voicemail } from '../types';
 
 export const DashboardScreen = ({ navigation }: any) => {
   const [voicemails, setVoicemails] = useState<Voicemail[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({ unread: 2, total: 5, minutesSaved: 14 });
+  const [stats, setStats] = useState({ unread: 2, total: 3, minutesSaved: 14 });
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const busyAnnouncementText = "Hello! Udhaya is busy right now. Please call back later, or leave your message after the tone.";
 
   const loadData = async () => {
     try {
@@ -17,42 +21,12 @@ export const DashboardScreen = ({ navigation }: any) => {
       const res = await ApiService.getVoicemails({ sort: 'desc' });
       if (res.voicemails && res.voicemails.length > 0) {
         setVoicemails(res.voicemails.slice(0, 3));
-        const unreadCount = res.voicemails.filter(v => !v.isRead).length;
+        const unreadCount = res.voicemails.filter((v) => !v.isRead).length;
         setStats({
           unread: unreadCount,
           total: res.total,
           minutesSaved: Math.round(res.total * 2.8),
         });
-      } else {
-        // Sample default data if backend has no records yet
-        setVoicemails([
-          {
-            id: 'demo-vm-1',
-            callerNumber: '+1 415-555-0132',
-            callerName: 'Sarah Jenkins',
-            durationSeconds: 42,
-            status: 'COMPLETED',
-            isRead: false,
-            createdAt: new Date().toISOString(),
-            transcript: {
-              id: 'tr-1',
-              rawText: 'Hi Sarah here, confirming our product sync tomorrow at 10 AM. Let me know if that works!',
-              language: 'en',
-              confidence: 0.98,
-            },
-            summary: {
-              id: 'sum-1',
-              summaryText: 'Confirming product sync tomorrow at 10:00 AM.',
-              callerPurpose: 'Schedule confirmation',
-              appointmentDates: ['Tomorrow 10:00 AM'],
-              callbackRequested: true,
-              callbackNumber: '+1 415-555-0132',
-              suggestedReplies: [
-                { en: "Tomorrow 10 AM works great for me!", ta: "Nalaikku 10 manikku sync ok, paakkalam!" }
-              ]
-            }
-          }
-        ]);
       }
     } catch (e) {
       console.log('[Dashboard] Fetch error, using cached display');
@@ -68,6 +42,21 @@ export const DashboardScreen = ({ navigation }: any) => {
     });
     return unsub;
   }, []);
+
+  const handleTestAIVoice = async () => {
+    try {
+      setIsSpeaking(true);
+      Alert.alert(
+        'AI Voice Speaking',
+        `Nova AI is announcing:\n\n"${busyAnnouncementText}"\n\n(Playing through your device speaker...)`
+      );
+      await TelephonyBridge.speakAIAnnouncement(busyAnnouncementText);
+    } catch (e: any) {
+      Alert.alert('TTS Note', e.message || 'Played AI Voice');
+    } finally {
+      setIsSpeaking(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -86,46 +75,68 @@ export const DashboardScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         </View>
 
-        {/* Live Protection Status Card */}
-        <View style={styles.statusCard}>
+        {/* MAIN USER FEATURE: Auto-Answer on Last Ring Card */}
+        <View style={styles.mainFeatureCard}>
           <View style={styles.statusHeader}>
-            <View style={styles.liveIndicator}>
+            <View style={styles.activeTag}>
               <View style={styles.pulseDot} />
-              <Text style={styles.statusBadgeText}>TELECOM ACTIVE</Text>
+              <Text style={styles.activeTagText}>AUTO-ANSWER ACTIVE (15s LAST RING)</Text>
             </View>
-            <TouchableOpacity onPress={() => navigation.navigate('ForwardingConfig')}>
-              <Text style={styles.setupLink}>Configure ➔</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('CallSettings')}>
+              <Text style={styles.setupLink}>Settings ➔</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.statusTitle}>Voicemail Protection Active</Text>
-          <Text style={styles.statusDesc}>
-            Incoming calls are screened. Unanswered calls automatically route to Nova AI live transcription.
-          </Text>
-        </View>
 
-        {/* Test Live Call Demo Button */}
-        <TouchableOpacity
-          style={styles.liveTestBanner}
-          onPress={() => navigation.navigate('LiveVoicemail', {
-            callerName: 'Dr. Michael Chen',
-            callerNumber: '+1 (650) 892-4410',
-          })}
-        >
-          <View style={styles.liveIconBadge}>
-            <Text style={styles.liveTestIcon}>⚡</Text>
+          <Text style={styles.mainFeatureTitle}>Udhaya's Busy Call Handler</Text>
+          <Text style={styles.mainFeatureDesc}>
+            If you don't pick up within 15 seconds (last ring), Nova automatically answers the call and the AI speaks in English:
+          </Text>
+
+          {/* AI Announcement Bubble */}
+          <View style={styles.quoteBox}>
+            <Text style={styles.quoteIcon}>🗣️</Text>
+            <Text style={styles.quoteText}>
+              "{busyAnnouncementText}"
+            </Text>
           </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.liveTestTitle}>Test Live Voicemail Demo</Text>
-            <Text style={styles.liveTestDesc}>Simulate incoming call with progressive live speech transcription</Text>
+
+          {/* Dual Action Buttons */}
+          <View style={styles.mainActionButtonsRow}>
+            {/* 1. Test Voice Out Loud */}
+            <TouchableOpacity
+              style={styles.voiceTestBtn}
+              onPress={handleTestAIVoice}
+            >
+              <Text style={styles.voiceTestBtnIcon}>🔊</Text>
+              <Text style={styles.voiceTestBtnText}>
+                {isSpeaking ? 'Speaking...' : 'Hear AI Voice'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* 2. Test Full Flow Simulation */}
+            <TouchableOpacity
+              style={styles.fullFlowBtn}
+              onPress={() => navigation.navigate('LiveVoicemail', {
+                callerName: 'Office / Client Call',
+                callerNumber: '+91 98401 23456',
+                autoAnswerDemo: true,
+              })}
+            >
+              <Text style={styles.fullFlowBtnIcon}>⚡</Text>
+              <Text style={styles.fullFlowBtnText}>Test Full Call Flow</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={styles.liveTestArrow}>➔</Text>
-        </TouchableOpacity>
+        </View>
 
         {/* Stats Grid */}
         <View style={styles.statsGrid}>
           <View style={styles.statBox}>
             <Text style={styles.statNumber}>{stats.unread}</Text>
-            <Text style={styles.statLabel}>Unread Messages</Text>
+            <Text style={styles.statLabel}>Unread Voicemails</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statNumber}>{stats.total}</Text>
+            <Text style={styles.statLabel}>Total Protected</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={styles.statNumber}>{stats.minutesSaved}m</Text>
@@ -142,23 +153,23 @@ export const DashboardScreen = ({ navigation }: any) => {
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionTile} onPress={() => navigation.navigate('GreetingManagement')}>
             <Text style={styles.actionIcon}>🎙️</Text>
-            <Text style={styles.actionText}>Custom Greetings</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.actionTile} onPress={() => navigation.navigate('ForwardingConfig')}>
-            <Text style={styles.actionIcon}>📲</Text>
-            <Text style={styles.actionText}>Carrier MMI Setup</Text>
+            <Text style={styles.actionText}>Voice Greetings</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionTile} onPress={() => navigation.navigate('CallSettings')}>
             <Text style={styles.actionIcon}>⚙️</Text>
-            <Text style={styles.actionText}>Call Screening</Text>
+            <Text style={styles.actionText}>Auto-Answer Config</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionTile} onPress={() => navigation.navigate('ForwardingConfig')}>
+            <Text style={styles.actionIcon}>📲</Text>
+            <Text style={styles.actionText}>Carrier MMI Codes</Text>
           </TouchableOpacity>
         </ScrollView>
 
         {/* Recent Voicemails */}
         <View style={styles.recentSectionHeader}>
-          <Text style={styles.sectionHeader}>RECENT VOICEMAILS</Text>
+          <Text style={styles.sectionHeader}>SAVED VOICEMAILS & TRANSCRIPTS</Text>
           <TouchableOpacity onPress={() => navigation.navigate('VoicemailInbox')}>
-            <Text style={styles.viewAllText}>View All ({stats.total})</Text>
+            <Text style={styles.seeAllText}>View All ➔</Text>
           </TouchableOpacity>
         </View>
 
@@ -192,173 +203,214 @@ const styles = StyleSheet.create({
   appName: {
     color: DarkTheme.primaryBlue,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '900',
     letterSpacing: 2,
   },
   screenTitle: {
     color: DarkTheme.text,
     fontSize: 26,
     fontWeight: '800',
+    marginTop: 2,
   },
   profileButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: DarkTheme.card,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: DarkTheme.cardElevated,
     borderWidth: 1,
-    borderColor: DarkTheme.cardBorder,
-    alignItems: 'center',
+    borderColor: DarkTheme.primaryBlue,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   profileInitial: {
-    color: DarkTheme.text,
+    color: DarkTheme.primaryBlue,
+    fontSize: 18,
     fontWeight: '700',
-    fontSize: 16,
   },
-  statusCard: {
-    backgroundColor: DarkTheme.card,
+  mainFeatureCard: {
+    backgroundColor: DarkTheme.cardBackground,
     borderRadius: 20,
     padding: 18,
-    borderWidth: 1,
-    borderColor: DarkTheme.cardBorder,
-    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: 'rgba(22, 139, 255, 0.45)',
+    marginBottom: 20,
+    shadowColor: DarkTheme.primaryBlue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 4,
   },
   statusHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  liveIndicator: {
+  activeTag: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 230, 118, 0.15)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
   },
   pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: DarkTheme.success,
     marginRight: 6,
   },
-  statusBadgeText: {
+  activeTagText: {
     color: DarkTheme.success,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
   setupLink: {
     color: DarkTheme.primaryBlue,
     fontSize: 12,
     fontWeight: '700',
   },
-  statusTitle: {
+  mainFeatureTitle: {
     color: DarkTheme.text,
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 19,
+    fontWeight: '800',
     marginBottom: 4,
   },
-  statusDesc: {
+  mainFeatureDesc: {
     color: DarkTheme.secondaryText,
     fontSize: 13,
     lineHeight: 18,
+    marginBottom: 10,
   },
-  liveTestBanner: {
-    backgroundColor: 'rgba(22, 139, 255, 0.12)',
-    borderWidth: 1,
-    borderColor: DarkTheme.primaryBlue,
-    borderRadius: 18,
-    padding: 16,
+  quoteBox: {
+    flexDirection: 'row',
+    backgroundColor: DarkTheme.cardElevated,
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: DarkTheme.primaryBlue,
+    marginBottom: 14,
+    alignItems: 'center',
+  },
+  quoteIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  quoteText: {
+    flex: 1,
+    color: DarkTheme.text,
+    fontSize: 13,
+    fontWeight: '600',
+    fontStyle: 'italic',
+    lineHeight: 18,
+  },
+  mainActionButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  voiceTestBtn: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
-  },
-  liveIconBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: DarkTheme.primaryBlue,
-    alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(22, 139, 255, 0.15)',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: DarkTheme.primaryBlue,
   },
-  liveTestIcon: {
-    fontSize: 20,
-    color: '#FFFFFF',
+  voiceTestBtnIcon: {
+    fontSize: 16,
+    marginRight: 6,
   },
-  liveTestTitle: {
-    color: DarkTheme.text,
-    fontSize: 15,
+  voiceTestBtnText: {
+    color: DarkTheme.primaryBlue,
+    fontSize: 13,
     fontWeight: '700',
   },
-  liveTestDesc: {
-    color: DarkTheme.secondaryText,
-    fontSize: 12,
-    marginTop: 2,
+  fullFlowBtn: {
+    flex: 1.2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: DarkTheme.primaryBlue,
+    paddingVertical: 12,
+    borderRadius: 12,
   },
-  liveTestArrow: {
-    color: DarkTheme.secondaryBlue,
-    fontSize: 18,
-    fontWeight: '800',
+  fullFlowBtnIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  fullFlowBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
   statsGrid: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
     marginBottom: 20,
   },
   statBox: {
     flex: 1,
-    backgroundColor: DarkTheme.card,
+    backgroundColor: DarkTheme.cardBackground,
     borderRadius: 16,
-    padding: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: DarkTheme.cardBorder,
+    alignItems: 'center',
   },
   statNumber: {
     color: DarkTheme.text,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
   },
   statLabel: {
-    color: DarkTheme.mutedText,
-    fontSize: 12,
-    marginTop: 4,
+    color: DarkTheme.secondaryText,
+    fontSize: 10,
     fontWeight: '600',
+    marginTop: 2,
+    textAlign: 'center',
   },
   sectionHeader: {
     color: DarkTheme.mutedText,
     fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 1.2,
-    marginBottom: 12,
+    letterSpacing: 1,
+    marginBottom: 10,
   },
   actionRow: {
-    flexDirection: 'row',
-    marginBottom: 24,
+    marginBottom: 22,
   },
   actionTile: {
-    backgroundColor: DarkTheme.card,
-    borderRadius: 16,
-    padding: 16,
-    marginRight: 12,
-    width: 140,
+    backgroundColor: DarkTheme.cardBackground,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginRight: 10,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: DarkTheme.cardBorder,
+    minWidth: 110,
   },
   actionIcon: {
-    fontSize: 26,
-    marginBottom: 8,
+    fontSize: 24,
+    marginBottom: 6,
   },
   actionText: {
     color: DarkTheme.text,
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '600',
   },
   recentSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
-  viewAllText: {
+  seeAllText: {
     color: DarkTheme.primaryBlue,
     fontSize: 12,
     fontWeight: '700',

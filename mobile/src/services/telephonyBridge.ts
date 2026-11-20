@@ -131,6 +131,64 @@ export const TelephonyBridge = {
   },
 
   /**
+   * Speak AI Voice announcement using on-device TextToSpeech
+   */
+  speakAIAnnouncement: async (text: string): Promise<boolean> => {
+    if (!hasNativeModule || !NovaTelephonyModule.speakAIAnnouncement) {
+      console.log('[TelephonyBridge] Simulated TTS speech:', text);
+      return true;
+    }
+    return NovaTelephonyModule.speakAIAnnouncement(text);
+  },
+
+  /**
+   * Set Auto-Answer configuration on last ring
+   */
+  setAutoAnswerConfig: async (
+    enabled: boolean,
+    ringSeconds = 15,
+    ownerName = 'Udhaya',
+    customMessage = ''
+  ): Promise<any> => {
+    if (!hasNativeModule || !NovaTelephonyModule.setAutoAnswerConfig) {
+      return { enabled, ringSeconds, ownerName, message: customMessage };
+    }
+    return NovaTelephonyModule.setAutoAnswerConfig(enabled, ringSeconds, ownerName, customMessage);
+  },
+
+  /**
+   * Get Auto-Answer configuration
+   */
+  getAutoAnswerConfig: async (): Promise<{ enabled: boolean; ringSeconds: number; ownerName: string; message: string }> => {
+    if (!hasNativeModule || !NovaTelephonyModule.getAutoAnswerConfig) {
+      return {
+        enabled: true,
+        ringSeconds: 15,
+        ownerName: 'Udhaya',
+        message: 'Hello! Udhaya is busy right now. Please call back later, or leave your message after the tone.',
+      };
+    }
+    return NovaTelephonyModule.getAutoAnswerConfig();
+  },
+
+  /**
+   * Answer current ringing call
+   */
+  answerCall: async (): Promise<boolean> => {
+    if (!hasNativeModule || !NovaTelephonyModule.answerCall) return true;
+    return NovaTelephonyModule.answerCall();
+  },
+
+  /**
+   * Listen for auto-answered call event
+   */
+  onCallAutoAnswered: (callback: (data: { phoneNumber: string; autoAnswered: boolean }) => void) => {
+    if (!eventEmitter) return () => {};
+    const subscription = eventEmitter.addListener('onCallAutoAnswered', callback);
+    return () => subscription.remove();
+  },
+
+  /**
    * Get initial call details if the app was opened via incoming call notification
    */
   getInitialCallDetails: async (): Promise<{ screen: string; callerNumber: string; callerName: string }> => {

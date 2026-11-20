@@ -10,6 +10,8 @@ import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.novalive.voicemail.telecom.CallStateTracker
 import com.novalive.voicemail.telecom.CarrierForwardingHelper
+import com.novalive.voicemail.telecom.NovaAutoAnswerHelper
+import com.novalive.voicemail.telecom.NovaInCallService
 import com.novalive.voicemail.telecom.NovaSpeechRecognitionHelper
 
 class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
@@ -23,9 +25,17 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
 
     private var pendingPromise: Promise? = null
     private var speechHelper: NovaSpeechRecognitionHelper? = null
+    private var autoAnswerHelper: NovaAutoAnswerHelper? = null
 
     init {
         reactContext.addActivityEventListener(this)
+
+        // Initialize Auto-Answer & AI Voice Announcer Helper
+        autoAnswerHelper = NovaAutoAnswerHelper(reactContext).apply {
+            isAutoAnswerEnabled = CallStateTracker.isAutoAnswerEnabled
+            ringTimeoutSeconds = CallStateTracker.ringTimeoutSeconds
+            busyMessage = CallStateTracker.busyMessage
+        }
 
         // Listen for incoming call notifications from CallScreening or InCallService
         CallStateTracker.setIncomingCallListener { phoneNumber, displayName ->
@@ -35,6 +45,25 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
                 putDouble("timestamp", System.currentTimeMillis().toDouble())
             }
             sendEvent("onIncomingCall", params)
+
+            // Trigger auto-answer timer on last ring if enabled
+            autoAnswerHelper?.onCallRinging(phoneNumber) {
+                val answeredParams = Arguments.createMap().apply {
+                    putString("phoneNumber", phoneNumber)
+                    putBoolean("autoAnswered", true)
+                }
+                sendEvent("onCallAutoAnswered", answeredParams)
+            }
+        }
+
+        CallStateTracker.setCallAnsweredListener {
+            autoAnswerHelper?.cancelPendingAutoAnswer()
+            sendEvent("onCallAnswered", Arguments.createMap())
+        }
+
+        CallStateTracker.setCallEndedListener {
+            autoAnswerHelper?.cancelPendingAutoAnswer()
+            sendEvent("onCallEnded", Arguments.createMap())
         }
 
         // Initialize Native Speech Recognition Helper for on-device live speech-to-text
@@ -74,6 +103,63 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
             reactContext
                 .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                 .emit(eventName, params)
+        }
+    }
+
+    @ReactMethod
+    fun speakAIAnnouncement(text: String, promise: Promise) {
+        try {
+            autoAnswerHelper?.speakAnnouncement(text) {
+                promise.resolve(true)
+            }
+        } catch (e: Exception) {
+            promise.reject("TTS_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun setAutoAnswerConfig(enabled: Boolean, ringSeconds: Int, ownerName: String, customMessage: String, promise: Promise) {
+        try {
+            val finalMsg = if (customMessage.isNotBlank()) customMessage else "Hello! $ownerName is busy right now. Please call back later, or leave your message after the tone."
+            CallStateTracker.isAutoAnswerEnabled = enabled
+            CallStateTracker.ringTimeoutSeconds = if (ringSeconds > 0) ringSeconds else 15
+            CallStateTracker.ownerName = if (ownerName.isNotBlank()) ownerName else "Udhaya"
+            CallStateTracker.busyMessage = finalMsg
+
+            autoAnswerHelper?.isAutoAnswerEnabled = enabled
+            autoAnswerHelper?.ringTimeoutSeconds = CallStateTracker.ringTimeoutSeconds
+            autoAnswerHelper?.busyMessage = finalMsg
+
+            val result = Arguments.createMap().apply {
+                putBoolean("enabled", enabled)
+                putInt("ringSeconds", CallStateTracker.ringTimeoutSeconds)
+                putString("ownerName", CallStateTracker.ownerName)
+                putString("message", finalMsg)
+            }
+            promise.resolve(result)
+        } catch (e: Exception) {
+            promise.reject("CONFIG_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getAutoAnswerConfig(promise: Promise) {
+        val result = Arguments.createMap().apply {
+            putBoolean("enabled", CallStateTracker.isAutoAnswerEnabled)
+            putInt("ringSeconds", CallStateTracker.ringTimeoutSeconds)
+            putString("ownerName", CallStateTracker.ownerName)
+            putString("message", CallStateTracker.busyMessage)
+        }
+        promise.resolve(result)
+    }
+
+    @ReactMethod
+    fun answerCall(promise: Promise) {
+        try {
+            val answered = autoAnswerHelper?.answerCallNow() ?: false
+            promise.resolve(answered)
+        } catch (e: Exception) {
+            promise.reject("ANSWER_ERROR", e.message)
         }
     }
 
