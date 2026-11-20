@@ -84,7 +84,7 @@ class NovaAutoAnswerHelper(private val context: Context) : TextToSpeech.OnInitLi
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val audioAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
                 tts?.setAudioAttributes(audioAttributes)
@@ -195,10 +195,16 @@ class NovaAutoAnswerHelper(private val context: Context) : TextToSpeech.OnInitLi
 
     private fun enableSpeakerphoneForCall() {
         try {
-            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            audioManager?.mode = AudioManager.MODE_IN_COMMUNICATION
-            audioManager?.isSpeakerphoneOn = true
-            Log.i(TAG, "Speakerphone enabled for clear audio uplink transmission")
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+            audioManager.isSpeakerphoneOn = true
+
+            val maxMusicVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxMusicVol, 0)
+
+            val maxVoiceVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
+            audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, maxVoiceVol, 0)
+
+            Log.i(TAG, "Speakerphone & max media volume enabled for acoustic uplink transmission")
         } catch (e: Exception) {
             Log.e(TAG, "Error configuring audio manager", e)
         }
@@ -209,28 +215,43 @@ class NovaAutoAnswerHelper(private val context: Context) : TextToSpeech.OnInitLi
 
         mainHandler.post {
             try {
-                if (isTtsReady && tts != null) {
-                    tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {
-                            Log.d(TAG, "AI speech announcement started")
-                        }
-
-                        override fun onDone(utteranceId: String?) {
-                            Log.d(TAG, "AI speech announcement completed")
-                            mainHandler.post { onComplete?.invoke() }
-                        }
-
-                        override fun onError(utteranceId: String?) {
-                            Log.w(TAG, "AI speech announcement error: $utteranceId")
-                            mainHandler.post { onComplete?.invoke() }
-                        }
-                    })
-
-                    tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID)
-                } else {
-                    Log.w(TAG, "TTS not ready yet")
-                    onComplete?.invoke()
+                // Wake beep to activate cellular baseband VAD
+                try {
+                    val toneGen = android.media.ToneGenerator(AudioManager.STREAM_MUSIC, 100)
+                    toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 250)
+                } catch (te: Exception) {
+                    Log.w(TAG, "Tone generator fallback", te)
                 }
+
+                mainHandler.postDelayed({
+                    if (isTtsReady && tts != null) {
+                        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                            override fun onStart(utteranceId: String?) {
+                                Log.d(TAG, "AI speech announcement started")
+                            }
+
+                            override fun onDone(utteranceId: String?) {
+                                Log.d(TAG, "AI speech announcement completed")
+                                mainHandler.post { onComplete?.invoke() }
+                            }
+
+                            override fun onError(utteranceId: String?) {
+                                Log.w(TAG, "AI speech announcement error: $utteranceId")
+                                mainHandler.post { onComplete?.invoke() }
+                            }
+                        })
+
+                        val params = android.os.Bundle().apply {
+                            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
+                            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+                        }
+
+                        tts?.speak(speechText, TextToSpeech.QUEUE_FLUSH, params, UTTERANCE_ID)
+                    } else {
+                        Log.w(TAG, "TTS not ready yet")
+                        onComplete?.invoke()
+                    }
+                }, 300L)
             } catch (e: Exception) {
                 Log.e(TAG, "Error speaking announcement", e)
                 onComplete?.invoke()

@@ -163,7 +163,7 @@ class NovaAutoAnswerService : Service(), TextToSpeech.OnInitListener {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 val audioAttributes = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
                     .build()
                 tts?.setAudioAttributes(audioAttributes)
@@ -343,13 +343,19 @@ class NovaAutoAnswerService : Service(), TextToSpeech.OnInitListener {
     private fun enableSpeakerAndAudioRouting() {
         try {
             val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+
+            // Turn speakerphone ON for the call
             audioManager.isSpeakerphoneOn = true
 
-            // Set voice call volume high so caller and receiver hear clearly
-            val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
-            audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, (maxVol * 0.9).toInt(), 0)
-            Log.i(TAG, "Audio routed to speakerphone & voice call stream")
+            // DO NOT set MODE_IN_COMMUNICATION! In communication mode, hardware AEC mutes speaker sound from mic.
+            // Max out media loudspeaker (STREAM_MUSIC) to 100% so the bottom loudspeaker directly broadcasts into mic
+            val maxMusicVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxMusicVol, 0)
+
+            val maxVoiceVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_VOICE_CALL)
+            audioManager.setStreamVolume(AudioManager.STREAM_VOICE_CALL, maxVoiceVol, 0)
+
+            Log.i(TAG, "Audio routed to max loudspeaker: STREAM_MUSIC=$maxMusicVol, STREAM_VOICE_CALL=$maxVoiceVol")
         } catch (e: Exception) {
             Log.e(TAG, "Error configuring AudioManager for in-call speaker", e)
         }
@@ -358,34 +364,44 @@ class NovaAutoAnswerService : Service(), TextToSpeech.OnInitListener {
     private fun speakBusyMessage(text: String, onDone: () -> Unit) {
         mainHandler.post {
             try {
-                if (isTtsReady && tts != null) {
-                    tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {
-                            Log.i(TAG, "TTS onStart: $utteranceId")
-                        }
-
-                        override fun onDone(utteranceId: String?) {
-                            Log.i(TAG, "TTS onDone: $utteranceId")
-                            mainHandler.post { onDone() }
-                        }
-
-                        override fun onError(utteranceId: String?) {
-                            Log.w(TAG, "TTS onError: $utteranceId")
-                            mainHandler.post { onDone() }
-                        }
-                    })
-
-                    val params = Bundle().apply {
-                        putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_VOICE_CALL)
-                        putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
-                    }
-
-                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, UTTERANCE_ID)
-                } else {
-                    Log.w(TAG, "TTS not ready when trying to speak busy message")
-                    // Fallback delay to avoid hanging call instantly
-                    mainHandler.postDelayed({ onDone() }, 3000L)
+                // Play a brief wake-up beep to trigger cellular network Voice Activity Detection (VAD)
+                try {
+                    val toneGen = android.media.ToneGenerator(AudioManager.STREAM_MUSIC, 100)
+                    toneGen.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 250)
+                } catch (te: Exception) {
+                    Log.w(TAG, "Tone generator fallback", te)
                 }
+
+                mainHandler.postDelayed({
+                    if (isTtsReady && tts != null) {
+                        tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                            override fun onStart(utteranceId: String?) {
+                                Log.i(TAG, "TTS onStart: $utteranceId")
+                            }
+
+                            override fun onDone(utteranceId: String?) {
+                                Log.i(TAG, "TTS onDone: $utteranceId")
+                                mainHandler.post { onDone() }
+                            }
+
+                            override fun onError(utteranceId: String?) {
+                                Log.w(TAG, "TTS onError: $utteranceId")
+                                mainHandler.post { onDone() }
+                            }
+                        })
+
+                        // Play on STREAM_MUSIC at maximum volume through main bottom speaker
+                        val params = Bundle().apply {
+                            putInt(TextToSpeech.Engine.KEY_PARAM_STREAM, AudioManager.STREAM_MUSIC)
+                            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
+                        }
+
+                        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, UTTERANCE_ID)
+                    } else {
+                        Log.w(TAG, "TTS not ready when trying to speak busy message")
+                        mainHandler.postDelayed({ onDone() }, 3000L)
+                    }
+                }, 300L)
             } catch (e: Exception) {
                 Log.e(TAG, "Exception during TTS speak", e)
                 onDone()
