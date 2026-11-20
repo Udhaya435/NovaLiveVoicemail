@@ -244,6 +244,41 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun openDefaultAppsSettings(promise: Promise) {
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            reactContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(android.provider.Settings.ACTION_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                reactContext.startActivity(intent)
+                promise.resolve(true)
+            } catch (ex: Exception) {
+                promise.reject("SETTINGS_ERROR", ex.message)
+            }
+        }
+    }
+
+    @ReactMethod
+    fun openAppDetailsSettings(promise: Promise) {
+        try {
+            val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.fromParts("package", reactContext.packageName, null)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            reactContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SETTINGS_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
     fun isCallScreeningRoleHeld(promise: Promise) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val roleManager = reactContext.getSystemService(Context.ROLE_SERVICE) as RoleManager

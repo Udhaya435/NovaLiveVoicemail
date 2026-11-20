@@ -102,6 +102,22 @@ export const TelephonyBridge = {
   },
 
   /**
+   * Open Android Default Apps Settings page directly
+   */
+  openDefaultAppsSettings: async (): Promise<boolean> => {
+    if (!hasNativeModule || !NovaTelephonyModule.openDefaultAppsSettings) return false;
+    return NovaTelephonyModule.openDefaultAppsSettings();
+  },
+
+  /**
+   * Open Android App Details page (where 3 dots Allow Restricted Settings is located)
+   */
+  openAppDetailsSettings: async (): Promise<boolean> => {
+    if (!hasNativeModule || !NovaTelephonyModule.openAppDetailsSettings) return false;
+    return NovaTelephonyModule.openAppDetailsSettings();
+  },
+
+  /**
    * Activate carrier conditional call forwarding using standard MMI code
    */
   activateCarrierForwarding: async (type: string, targetNumber: string, ringSeconds = 20): Promise<{ success: boolean; mmiCode: string }> => {

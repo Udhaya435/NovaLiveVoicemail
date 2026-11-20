@@ -57,8 +57,35 @@ export const CallSettingsScreen = ({ navigation }: any) => {
   };
 
   const handleDefaultDialerToggle = async () => {
-    const success = await TelephonyBridge.requestDefaultDialerRole();
-    setDefaultDialerEnabled(success);
+    try {
+      const success = await TelephonyBridge.requestDefaultDialerRole();
+      if (success) {
+        setDefaultDialerEnabled(true);
+        Alert.alert('Granted', 'Nova is now set as your Default Phone App!');
+      } else {
+        showDefaultDialerHelpAlert();
+      }
+    } catch {
+      showDefaultDialerHelpAlert();
+    }
+  };
+
+  const showDefaultDialerHelpAlert = () => {
+    Alert.alert(
+      'Allow Default Phone App',
+      'Android 13/14 blocks sideloaded apps from becoming the phone app until approved:\n\n1. Tap "Open App Info (3 Dots ⋮)".\n2. In top-right, tap 3 dots (⋮) ➔ "Allow restricted settings".\n3. Tap "Open Default Apps" ➔ Select "Nova Live Voicemail".',
+      [
+        {
+          text: 'Open App Info (3 Dots ⋮)',
+          onPress: () => TelephonyBridge.openAppDetailsSettings(),
+        },
+        {
+          text: 'Open Default Apps',
+          onPress: () => TelephonyBridge.openDefaultAppsSettings(),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   };
 
   return (
@@ -177,6 +204,29 @@ export const CallSettingsScreen = ({ navigation }: any) => {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Quick Setup Helpers for Android 13/14 Restricted Settings */}
+          {!defaultDialerEnabled && (
+            <View style={styles.troubleshootBox}>
+              <Text style={styles.troubleshootText}>
+                Android 13/14 restricted? Use 1-tap shortcuts:
+              </Text>
+              <View style={styles.troubleshootRow}>
+                <TouchableOpacity
+                  style={styles.troubleshootBtn}
+                  onPress={() => TelephonyBridge.openAppDetailsSettings()}
+                >
+                  <Text style={styles.troubleshootBtnText}>1. Open App Info (3 Dots ⋮)</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.troubleshootBtn}
+                  onPress={() => TelephonyBridge.openDefaultAppsSettings()}
+                >
+                  <Text style={styles.troubleshootBtnText}>2. Open Default Apps</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </View>
 
         <View style={styles.card}>
@@ -338,6 +388,34 @@ const styles = StyleSheet.create({
   },
   roleButtonText: {
     color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  troubleshootBox: {
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  troubleshootText: {
+    color: DarkTheme.mutedText,
+    fontSize: 11,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  troubleshootRow: {
+    gap: 6,
+  },
+  troubleshootBtn: {
+    backgroundColor: DarkTheme.cardElevated,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: DarkTheme.cardBorder,
+  },
+  troubleshootBtnText: {
+    color: DarkTheme.primaryBlue,
     fontSize: 12,
     fontWeight: '700',
   },
