@@ -20,6 +20,7 @@ import com.novalive.voicemail.MainActivity
  * CRITICAL ARCHITECTURAL CONSTRAINTS:
  * - Operates strictly within Android's mandatory screening timeout (~5 seconds).
  * - Identifies caller information via Call.Details.
+ * - Starts NovaAutoAnswerService foreground service to ensure last-ring answering.
  * - Posts high-priority Notification so the user can instantly open Live Voicemail.
  * - Routes call decision: allow normally or silently drop spam per user configuration.
  */
@@ -42,15 +43,13 @@ class NovaCallScreeningService : CallScreeningService() {
         // 1. Notify app in-memory tracker (notifies foreground React Native screen if open)
         CallStateTracker.onCallReceived(rawPhoneNumber, callerDisplayName)
 
-        // 2. Schedule Auto-Answer on Last Ring via AutoAnswerHelper
-        NovaCallReceiver.getHelper(this).onCallRinging(rawPhoneNumber) {
-            Log.i(TAG, "Screened call auto-answered on last ring for $rawPhoneNumber")
-        }
+        // 2. Launch NovaAutoAnswerService foreground service with WakeLock to guarantee last-ring execution
+        NovaAutoAnswerService.startForRingingCall(this, rawPhoneNumber, callerDisplayName)
 
         // 3. Post High-Priority Notification so user can open Live Voicemail transcription screen
         showLiveVoicemailNotification(rawPhoneNumber, callerDisplayName)
 
-        // 3. Determine screening response
+        // 4. Determine screening response
         val responseBuilder = CallResponse.Builder()
         val shouldSilence = CallStateTracker.shouldSilenceUnknown() && rawPhoneNumber == "Unknown Caller"
 

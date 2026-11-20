@@ -1,6 +1,7 @@
 export const DarkTheme = {
   background: '#0B0D12',
   card: '#171B24',
+  cardBackground: '#171B24',
   cardElevated: '#202533',
   cardBorder: 'rgba(255, 255, 255, 0.08)',
   primaryBlue: '#168BFF',
@@ -19,6 +20,7 @@ export const DarkTheme = {
 export const LightTheme = {
   background: '#F5F7FA',
   card: '#FFFFFF',
+  cardBackground: '#FFFFFF',
   cardElevated: '#FFFFFF',
   cardBorder: 'rgba(0, 0, 0, 0.06)',
   primaryBlue: '#0070F3',

@@ -141,7 +141,7 @@ export const ApiService = {
     if (params?.search) {
       const s = params.search.toLowerCase();
       list = list.filter((v) =>
-        v.callerName.toLowerCase().includes(s) ||
+        (v.callerName || '').toLowerCase().includes(s) ||
         v.callerNumber.toLowerCase().includes(s) ||
         (v.transcript?.rawText || '').toLowerCase().includes(s)
       );

@@ -194,7 +194,7 @@ export const VoicemailDetailScreen = ({ route, navigation }: any) => {
                 <Text style={styles.replyTa}>🇮🇳 "{reply.ta}"</Text>
                 <TouchableOpacity
                   style={styles.sendReplyButton}
-                  onPress={() => alert(`Reply drafted:\n"${reply.en}"`)}
+                  onPress={() => Alert.alert('SMS Reply', `Reply drafted:\n"${reply.en}"`)}
                 >
                   <Text style={styles.sendReplyText}>Send SMS Reply ➔</Text>
                 </TouchableOpacity>

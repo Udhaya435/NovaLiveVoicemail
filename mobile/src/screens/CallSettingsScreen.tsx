@@ -1,5 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Switch, TextInput, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  SafeAreaView,
+  Switch,
+  TextInput,
+  Alert,
+  PermissionsAndroid,
+  Platform,
+} from 'react-native';
 import { DarkTheme } from '../theme/colors';
 import { TelephonyBridge } from '../services/telephonyBridge';
 
@@ -14,6 +26,8 @@ export const CallSettingsScreen = ({ navigation }: any) => {
   const [callScreeningEnabled, setCallScreeningEnabled] = useState(true);
   const [silenceUnknown, setSilenceUnknown] = useState(false);
   const [defaultDialerEnabled, setDefaultDialerEnabled] = useState(false);
+  const [phonePermissionsGranted, setPhonePermissionsGranted] = useState(false);
+  const [batteryOptimizationIgnored, setBatteryOptimizationIgnored] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
 
   useEffect(() => {
@@ -27,8 +41,57 @@ export const CallSettingsScreen = ({ navigation }: any) => {
       }
     });
 
-    TelephonyBridge.isDefaultDialerActive().then(setDefaultDialerEnabled);
+    refreshStatuses();
   }, []);
+
+  const refreshStatuses = async () => {
+    TelephonyBridge.isDefaultDialerActive().then(setDefaultDialerEnabled);
+    TelephonyBridge.checkPhonePermissions().then((res) => {
+      setPhonePermissionsGranted(res.isReady);
+    });
+    TelephonyBridge.isBatteryOptimizationIgnored().then((res) => {
+      setBatteryOptimizationIgnored(res);
+    });
+  };
+
+  const handleRequestPhonePermissions = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      const permissionsToRequest = [
+        PermissionsAndroid.PERMISSIONS.ANSWER_PHONE_CALLS,
+        PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+        PermissionsAndroid.PERMISSIONS.READ_CALL_LOG,
+        PermissionsAndroid.PERMISSIONS.CALL_PHONE,
+      ];
+      if (Platform.Version >= 33) {
+        permissionsToRequest.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+      }
+
+      const granted = await PermissionsAndroid.requestMultiple(permissionsToRequest);
+
+      const hasAnswer = granted[PermissionsAndroid.PERMISSIONS.ANSWER_PHONE_CALLS] === PermissionsAndroid.RESULTS.GRANTED;
+      const hasState = granted[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] === PermissionsAndroid.RESULTS.GRANTED;
+
+      setPhonePermissionsGranted(hasAnswer && hasState);
+
+      if (hasAnswer && hasState) {
+        Alert.alert('Permissions Granted', 'Auto-Answer is now fully authorized to answer incoming calls on the last ring!');
+      } else {
+        Alert.alert('Action Required', 'Please tap Allow so Nova can detect ringing calls and answer on the last ring.');
+      }
+    } catch (err: any) {
+      console.warn(err);
+    }
+  };
+
+  const handleRequestBatteryOptimization = async () => {
+    try {
+      await TelephonyBridge.requestIgnoreBatteryOptimizations();
+      setTimeout(refreshStatuses, 1500);
+    } catch (e: any) {
+      Alert.alert('Settings', e.message || 'Battery settings');
+    }
+  };
 
   const handleSaveConfig = async () => {
     await TelephonyBridge.setAutoAnswerConfig(
@@ -102,6 +165,20 @@ export const CallSettingsScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         </View>
 
+        {/* STATUS BANNER */}
+        <View style={[styles.statusBanner, phonePermissionsGranted ? styles.statusBannerOk : styles.statusBannerWarning]}>
+          <Text style={styles.statusBannerTitle}>
+            {phonePermissionsGranted
+              ? '✅ Auto-Answer Ready for Cellular Calls'
+              : '⚠️ Phone Permission Required for Auto-Answer'}
+          </Text>
+          <Text style={styles.statusBannerDesc}>
+            {phonePermissionsGranted
+              ? `When an incoming call rings past ${ringDuration}s without being answered, Nova will answer automatically, announce that ${ownerName} is busy, and hang up.`
+              : 'Android requires call permissions to answer incoming calls. Tap "Grant Phone Permissions" below.'}
+          </Text>
+        </View>
+
         {/* SECTION 1: AUTO-ANSWER ON LAST RING (USER MAIN REQUIREMENT) */}
         <Text style={styles.sectionTitle}>AUTO-ANSWER ON LAST RING</Text>
 
@@ -168,8 +245,51 @@ export const CallSettingsScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         </View>
 
-        {/* SECTION 2: ANDROID TELECOM CALL SCREENING */}
-        <Text style={styles.sectionTitle}>CALL SCREENING & PERMISSIONS</Text>
+        {/* SECTION 2: REQUIRED SYSTEM PERMISSIONS */}
+        <Text style={styles.sectionTitle}>REQUIRED AUTO-ANSWER PERMISSIONS</Text>
+
+        {/* 1. Phone / Answer Calls Permission */}
+        <View style={styles.card}>
+          <View style={styles.row}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.settingTitle}>Phone & Auto-Answer Permission</Text>
+              <Text style={styles.settingDesc}>
+                Grants Android authority to detect incoming rings and execute auto-answer on the last ring.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.roleButton, phonePermissionsGranted && styles.roleActiveButton]}
+              onPress={handleRequestPhonePermissions}
+            >
+              <Text style={styles.roleButtonText}>
+                {phonePermissionsGranted ? '✓ Granted' : 'Grant Permission'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* 2. Battery Optimization (Realme UI / ColorOS / MIUI) */}
+        <View style={styles.card}>
+          <View style={styles.row}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={styles.settingTitle}>Run in Background (Battery Whitelist)</Text>
+              <Text style={styles.settingDesc}>
+                Prevents Realme UI / ColorOS battery management from killing Nova when the phone is locked or screen is off.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.roleButton, batteryOptimizationIgnored && styles.roleActiveButton]}
+              onPress={handleRequestBatteryOptimization}
+            >
+              <Text style={styles.roleButtonText}>
+                {batteryOptimizationIgnored ? '✓ Unrestricted' : 'Allow Background'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* SECTION 3: ANDROID TELECOM & CALL SCREENING */}
+        <Text style={styles.sectionTitle}>CALL SCREENING & DEFAULT APP (OPTIONAL)</Text>
 
         <View style={styles.card}>
           <View style={styles.row}>
@@ -189,7 +309,7 @@ export const CallSettingsScreen = ({ navigation }: any) => {
 
         <View style={styles.card}>
           <View style={styles.row}>
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
               <Text style={styles.settingTitle}>Set as Default Phone App</Text>
               <Text style={styles.settingDesc}>
                 Grants Android InCallService authority to seamlessly answer calls and route audio to AI speaker.
@@ -267,7 +387,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   backButton: {
     color: DarkTheme.primaryBlue,
@@ -283,6 +403,31 @@ const styles = StyleSheet.create({
     color: DarkTheme.primaryBlue,
     fontSize: 16,
     fontWeight: '700',
+  },
+  statusBanner: {
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 18,
+    borderWidth: 1,
+  },
+  statusBannerOk: {
+    backgroundColor: 'rgba(0, 230, 118, 0.12)',
+    borderColor: DarkTheme.success,
+  },
+  statusBannerWarning: {
+    backgroundColor: 'rgba(255, 179, 0, 0.12)',
+    borderColor: '#FFB300',
+  },
+  statusBannerTitle: {
+    color: DarkTheme.text,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  statusBannerDesc: {
+    color: DarkTheme.secondaryText,
+    fontSize: 12,
+    lineHeight: 18,
   },
   sectionTitle: {
     color: DarkTheme.mutedText,

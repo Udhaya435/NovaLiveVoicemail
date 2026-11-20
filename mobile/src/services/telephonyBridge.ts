@@ -118,6 +118,32 @@ export const TelephonyBridge = {
   },
 
   /**
+   * Request to disable battery optimizations (essential for Realme / ColorOS / MIUI)
+   */
+  requestIgnoreBatteryOptimizations: async (): Promise<boolean> => {
+    if (!hasNativeModule || !NovaTelephonyModule.requestIgnoreBatteryOptimizations) return true;
+    return NovaTelephonyModule.requestIgnoreBatteryOptimizations();
+  },
+
+  /**
+   * Check if battery optimization is currently ignored
+   */
+  isBatteryOptimizationIgnored: async (): Promise<boolean> => {
+    if (!hasNativeModule || !NovaTelephonyModule.isBatteryOptimizationIgnored) return true;
+    return NovaTelephonyModule.isBatteryOptimizationIgnored();
+  },
+
+  /**
+   * Check runtime phone permissions (ANSWER_PHONE_CALLS, READ_PHONE_STATE)
+   */
+  checkPhonePermissions: async (): Promise<{ answerCalls: boolean; phoneState: boolean; isReady: boolean }> => {
+    if (!hasNativeModule || !NovaTelephonyModule.checkPhonePermissions) {
+      return { answerCalls: true, phoneState: true, isReady: true };
+    }
+    return NovaTelephonyModule.checkPhonePermissions();
+  },
+
+  /**
    * Activate carrier conditional call forwarding using standard MMI code
    */
   activateCarrierForwarding: async (type: string, targetNumber: string, ringSeconds = 20): Promise<{ success: boolean; mmiCode: string }> => {

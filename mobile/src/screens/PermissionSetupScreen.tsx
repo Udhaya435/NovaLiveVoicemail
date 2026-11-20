@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Switch, PermissionsAndroid, Platform } from 'react-native';
 import { DarkTheme } from '../theme/colors';
 import { TelephonyBridge } from '../services/telephonyBridge';
 
 export const PermissionSetupScreen = ({ navigation }: any) => {
   const [callScreeningGranted, setCallScreeningGranted] = useState(false);
+  const [phoneGranted, setPhoneGranted] = useState(false);
   const [contactsGranted, setContactsGranted] = useState(false);
   const [microphoneGranted, setMicrophoneGranted] = useState(false);
   const [notificationsGranted, setNotificationsGranted] = useState(true);
@@ -16,11 +17,34 @@ export const PermissionSetupScreen = ({ navigation }: any) => {
   const checkCurrentRoles = async () => {
     const screening = await TelephonyBridge.isCallScreeningActive();
     setCallScreeningGranted(screening);
+    const phoneCheck = await TelephonyBridge.checkPhonePermissions();
+    setPhoneGranted(phoneCheck.isReady);
   };
 
   const handleRequestCallScreening = async () => {
     const success = await TelephonyBridge.requestCallScreeningRole();
     setCallScreeningGranted(success);
+  };
+
+  const handleRequestPhone = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      const perms = [
+        PermissionsAndroid.PERMISSIONS.ANSWER_PHONE_CALLS,
+        PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE,
+        PermissionsAndroid.PERMISSIONS.CALL_PHONE,
+      ];
+      if (Platform.Version >= 33) {
+        perms.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+      }
+      const res = await PermissionsAndroid.requestMultiple(perms);
+      const ok =
+        res[PermissionsAndroid.PERMISSIONS.ANSWER_PHONE_CALLS] === PermissionsAndroid.RESULTS.GRANTED &&
+        res[PermissionsAndroid.PERMISSIONS.READ_PHONE_STATE] === PermissionsAndroid.RESULTS.GRANTED;
+      setPhoneGranted(ok);
+    } catch (e) {
+      console.warn(e);
+    }
   };
 
   const handleComplete = () => {
@@ -32,8 +56,35 @@ export const PermissionSetupScreen = ({ navigation }: any) => {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.headerTitle}>Permissions & Roles</Text>
         <Text style={styles.headerSubtitle}>
-          Nova requires Android Telecom permissions to screen calls and display live transcripts.
+          Nova requires Android Telecom permissions to auto-answer calls on the last ring and announce busy messages.
         </Text>
+
+        {/* Auto-Answer Phone Permission Card */}
+        <View style={styles.permissionCard}>
+          <View style={styles.permHeader}>
+            <View style={styles.permIconBadge}>
+              <Text style={styles.permIcon}>📞</Text>
+            </View>
+            <View style={styles.permTextContainer}>
+              <Text style={styles.permTitle}>Auto-Answer Call Permission</Text>
+              <Text style={styles.permStatus}>
+                {phoneGranted ? 'Granted' : 'Required for Auto-Answer'}
+              </Text>
+            </View>
+          </View>
+          <Text style={styles.permDesc}>
+            Grants Android authority to detect incoming ringing calls and answer on the last ring if you are busy.
+          </Text>
+          <TouchableOpacity
+            style={[styles.actionButton, phoneGranted && styles.actionButtonGranted]}
+            onPress={handleRequestPhone}
+            disabled={phoneGranted}
+          >
+            <Text style={styles.actionButtonText}>
+              {phoneGranted ? '✓ Permission Granted' : 'Grant Call Permission'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Call Screening Card */}
         <View style={styles.permissionCard}>

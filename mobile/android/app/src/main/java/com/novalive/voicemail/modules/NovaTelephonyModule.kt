@@ -1,11 +1,17 @@
 package com.novalive.voicemail.modules
 
+import android.Manifest
 import android.app.Activity
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
 import android.telecom.TelecomManager
+import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.novalive.voicemail.telecom.CallStateTracker
@@ -128,6 +134,7 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
 
             autoAnswerHelper?.isAutoAnswerEnabled = enabled
             autoAnswerHelper?.ringTimeoutSeconds = CallStateTracker.ringTimeoutSeconds
+            autoAnswerHelper?.ownerName = CallStateTracker.ownerName
             autoAnswerHelper?.busyMessage = finalMsg
 
             val result = Arguments.createMap().apply {
@@ -348,6 +355,74 @@ class NovaTelephonyModule(private val reactContext: ReactApplicationContext) :
             putString("callerName", callerName)
         }
         promise.resolve(map)
+    }
+
+    @ReactMethod
+    fun requestIgnoreBatteryOptimizations(promise: Promise) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val powerManager = reactContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+                val packageName = reactContext.packageName
+                if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    reactContext.startActivity(intent)
+                    promise.resolve(false)
+                } else {
+                    promise.resolve(true)
+                }
+            } else {
+                promise.resolve(true)
+            }
+        } catch (e: Exception) {
+            promise.reject("BATTERY_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun isBatteryOptimizationIgnored(promise: Promise) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val powerManager = reactContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+                promise.resolve(powerManager.isIgnoringBatteryOptimizations(reactContext.packageName))
+            } else {
+                promise.resolve(true)
+            }
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    @ReactMethod
+    fun checkPhonePermissions(promise: Promise) {
+        try {
+            val answerCalls = ContextCompat.checkSelfPermission(
+                reactContext,
+                Manifest.permission.ANSWER_PHONE_CALLS
+            ) == PackageManager.PERMISSION_GRANTED
+
+            val phoneState = ContextCompat.checkSelfPermission(
+                reactContext,
+                Manifest.permission.READ_PHONE_STATE
+            ) == PackageManager.PERMISSION_GRANTED
+
+            val callLog = ContextCompat.checkSelfPermission(
+                reactContext,
+                Manifest.permission.READ_CALL_LOG
+            ) == PackageManager.PERMISSION_GRANTED
+
+            val map = Arguments.createMap().apply {
+                putBoolean("answerCalls", answerCalls)
+                putBoolean("phoneState", phoneState)
+                putBoolean("callLog", callLog)
+                putBoolean("isReady", answerCalls && phoneState)
+            }
+            promise.resolve(map)
+        } catch (e: Exception) {
+            promise.reject("PERMISSION_CHECK_ERROR", e.message)
+        }
     }
 
     @ReactMethod

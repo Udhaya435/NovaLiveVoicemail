@@ -9,7 +9,7 @@ import android.util.Log
  * 
  * Bound when Nova is the active Phone / Dialer service.
  * Automatically handles ringing calls on the last ring:
- * 1. Counts down ring timeout.
+ * 1. Counts down ring timeout via NovaAutoAnswerService.
  * 2. Answers call via call.answer(0).
  * 3. Speaks AI busy message.
  * 4. Hangs up via call.disconnect().
@@ -19,7 +19,6 @@ class NovaInCallService : InCallService() {
     companion object {
         private const val TAG = "NovaInCallService"
         var activeCall: Call? = null
-        private var autoAnswerHelper: NovaAutoAnswerHelper? = null
     }
 
     private val callCallback = object : Call.Callback() {
@@ -28,10 +27,11 @@ class NovaInCallService : InCallService() {
             Log.d(TAG, "InCallService Call state changed to $state")
             if (state == Call.STATE_DISCONNECTED) {
                 activeCall = null
-                autoAnswerHelper?.cancelPendingAutoAnswer()
                 CallStateTracker.onCallEnded()
+                NovaAutoAnswerService.notifyCallEnded(applicationContext)
             } else if (state == Call.STATE_ACTIVE) {
                 CallStateTracker.onCallAnswered()
+                NovaAutoAnswerService.notifyCallAnsweredManually(applicationContext)
             }
         }
     }
@@ -48,12 +48,8 @@ class NovaInCallService : InCallService() {
         CallStateTracker.onCallReceived(phoneNumber, displayName)
 
         if (call.state == Call.STATE_RINGING) {
-            if (autoAnswerHelper == null) {
-                autoAnswerHelper = NovaAutoAnswerHelper(applicationContext)
-            }
-            autoAnswerHelper?.onCallRinging(phoneNumber) {
-                Log.i(TAG, "InCallService auto-answered call on last ring")
-            }
+            Log.i(TAG, "InCallService: call ringing for $phoneNumber, starting NovaAutoAnswerService")
+            NovaAutoAnswerService.startForRingingCall(applicationContext, phoneNumber, displayName)
         }
     }
 
@@ -63,8 +59,8 @@ class NovaInCallService : InCallService() {
         if (activeCall == call) {
             activeCall = null
         }
-        autoAnswerHelper?.cancelPendingAutoAnswer()
         CallStateTracker.onCallEnded()
+        NovaAutoAnswerService.notifyCallEnded(applicationContext)
     }
 
     fun answerCall() {

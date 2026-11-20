@@ -147,7 +147,7 @@ let initialGreetings: VoicemailGreeting[] = [
   {
     id: 'g-business',
     title: 'Business Hours Greeting',
-    greetingType: 'CUSTOM',
+    greetingType: 'CUSTOM_RECORDED',
     transcriptText: 'Thank you for calling. Our offices are currently closed. Please leave your contact details and inquiry.',
     language: 'en',
     isDefault: false,
@@ -253,7 +253,7 @@ export const VoicemailStore = {
     const newG: VoicemailGreeting = {
       id: `g-${Date.now()}`,
       title: greeting.title || 'Custom Greeting',
-      greetingType: greeting.greetingType || 'CUSTOM',
+      greetingType: greeting.greetingType || 'CUSTOM_RECORDED',
       transcriptText: greeting.transcriptText || 'Default greeting text',
       language: greeting.language || 'en',
       voiceId: greeting.voiceId,

@@ -11,9 +11,9 @@ import android.util.Log
  * 
  * BroadcastReceiver listening to TelephonyManager.ACTION_PHONE_STATE_CHANGED.
  * Automatically wakes up on live cellular calls:
- * 1. RINGING: Starts auto-answer countdown (last ring).
- * 2. If unanswered, auto-answers, announces "Udhaya is busy...", and hangs up!
- * 3. OFFHOOK / IDLE: Cancels countdown if picked up manually or caller hung up.
+ * 1. RINGING: Starts dedicated NovaAutoAnswerService foreground service with WakeLock.
+ * 2. If unanswered, auto-answers on last ring, announces "Hello! Udhaya is busy...", and hangs up!
+ * 3. OFFHOOK / IDLE: Cancels auto-answer if picked up manually or caller hung up.
  */
 class NovaCallReceiver : BroadcastReceiver() {
 
@@ -40,21 +40,28 @@ class NovaCallReceiver : BroadcastReceiver() {
 
         when (stateStr) {
             TelephonyManager.EXTRA_STATE_RINGING -> {
-                Log.i(TAG, "Call is ringing from: $incomingNumber")
+                Log.i(TAG, "Incoming call ringing: $incomingNumber. Starting NovaAutoAnswerService...")
                 CallStateTracker.onCallReceived(incomingNumber, incomingNumber)
+                
+                // 1. Start dedicated foreground service with WakeLock to guarantee execution
+                NovaAutoAnswerService.startForRingingCall(context, incomingNumber)
+
+                // 2. Also register with in-memory helper
                 helper.onCallRinging(incomingNumber) {
-                    Log.i(TAG, "Auto-answer triggered for $incomingNumber")
+                    Log.i(TAG, "Auto-answer callback triggered for $incomingNumber")
                 }
             }
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
                 Log.i(TAG, "Call answered manually (offhook)")
                 CallStateTracker.onCallAnswered()
                 helper.cancelPendingAutoAnswer()
+                NovaAutoAnswerService.notifyCallAnsweredManually(context)
             }
             TelephonyManager.EXTRA_STATE_IDLE -> {
                 Log.i(TAG, "Call idle / ended")
                 CallStateTracker.onCallEnded()
                 helper.cancelPendingAutoAnswer()
+                NovaAutoAnswerService.notifyCallEnded(context)
             }
         }
     }
