@@ -42,7 +42,12 @@ class NovaCallScreeningService : CallScreeningService() {
         // 1. Notify app in-memory tracker (notifies foreground React Native screen if open)
         CallStateTracker.onCallReceived(rawPhoneNumber, callerDisplayName)
 
-        // 2. Post High-Priority Notification so user can open Live Voicemail transcription screen
+        // 2. Schedule Auto-Answer on Last Ring via AutoAnswerHelper
+        NovaCallReceiver.getHelper(this).onCallRinging(rawPhoneNumber) {
+            Log.i(TAG, "Screened call auto-answered on last ring for $rawPhoneNumber")
+        }
+
+        // 3. Post High-Priority Notification so user can open Live Voicemail transcription screen
         showLiveVoicemailNotification(rawPhoneNumber, callerDisplayName)
 
         // 3. Determine screening response
